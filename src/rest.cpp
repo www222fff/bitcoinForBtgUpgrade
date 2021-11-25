@@ -161,14 +161,25 @@ static bool rest_headers(const util::Ref& context,
     std::vector<std::string> path;
     boost::split(path, param, boost::is_any_of("/"));
 
-    if (path.size() != 2)
-        return RESTERR(req, HTTP_BAD_REQUEST, "No header count specified. Use /rest/headers/<count>/<hash>.<ext>.");
-
-    long count = strtol(path[0].c_str(), nullptr, 10);
+    if (path.size() != 2 && (path.size() != 3 || path[0] != "legacy")) {
+        return RESTERR(req, HTTP_BAD_REQUEST, "No header count specified. Use /rest/headers/<count>/<hash>.<ext> or /rest/headers/legacy/<count>/<hash>.<ext>.");
+    }                           //use old rule if URI=/legacy/<COUNT>/<BLOCK-HASH>
+    std::string headerCount,hashStr;
+    bool legacy_format = false;
+    if (path.size() == 2) {
+        headerCount = path[0];
+        hashStr = path[1];
+    }
+    else {
+        headerCount = path[1];
+        hashStr = path[2];
+        legacy_format = true;
+    }
+    long count = strtol(headerCount.c_str(), nullptr, 10);
     if (count < 1 || count > 2000)
         return RESTERR(req, HTTP_BAD_REQUEST, "Header count out of range: " + path[0]);
 
-    std::string hashStr = path[1];
+    
     uint256 hash;
     if (!ParseHashStr(hashStr, hash))
         return RESTERR(req, HTTP_BAD_REQUEST, "Invalid hash: " + hashStr);
@@ -187,10 +198,10 @@ static bool rest_headers(const util::Ref& context,
             pindex = ::ChainActive().Next(pindex);
         }
     }
-
+    int ser_flags = legacy_format ? SERIALIZE_BLOCK_LEGACY : 0;
     switch (rf) {
     case RetFormat::BINARY: {
-        CDataStream ssHeader(SER_NETWORK, PROTOCOL_VERSION);
+        CDataStream ssHeader(SER_NETWORK, PROTOCOL_VERSION | ser_flags);
         for (const CBlockIndex *pindex : headers) {
             ssHeader << pindex->GetBlockHeader();
         }
@@ -234,8 +245,18 @@ static bool rest_block(HTTPRequest* req,
 {
     if (!CheckWarmup(req))
         return false;
-    std::string hashStr;
-    const RetFormat rf = ParseDataFormat(hashStr, strURIPart);
+    std::string param, hashStr;
+    const RetFormat rf = ParseDataFormat(param, strURIPart);
+    std::vector<std::string> path;
+    boost::split(path, param, boost::is_any_of("/"));
+    bool legacy_format = false;
+    if (path.size() == 1) {          
+        hashStr = path[0];
+    }
+    else {
+        legacy_format = true;  //use old rule if URI=/legacy/<BLOCK-HASH>
+        hashStr = path[1];
+    }
 
     uint256 hash;
     if (!ParseHashStr(hashStr, hash))
@@ -258,11 +279,12 @@ static bool rest_block(HTTPRequest* req,
         if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus()))
             return RESTERR(req, HTTP_NOT_FOUND, hashStr + " not found");
     }
+    int ser_flags = legacy_format ? SERIALIZE_BLOCK_LEGACY : 0;
+    CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags() | ser_flags);
+    ssBlock << block;
 
     switch (rf) {
     case RetFormat::BINARY: {
-        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags());
-        ssBlock << block;
         std::string binaryBlock = ssBlock.str();
         req->WriteHeader("Content-Type", "application/octet-stream");
         req->WriteReply(HTTP_OK, binaryBlock);
@@ -270,9 +292,7 @@ static bool rest_block(HTTPRequest* req,
     }
 
     case RetFormat::HEX: {
-        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags());
-        ssBlock << block;
-        std::string strHex = HexStr(ssBlock) + "\n";
+        std::string strHex = HexStr(ssBlock.begin(), ssBlock.end()) + "\n";
         req->WriteHeader("Content-Type", "text/plain");
         req->WriteReply(HTTP_OK, strHex);
         return true;

@@ -1,5 +1,8 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2020 The Bitcoin Core developers
+// Copyright (c) 2009-2018 The Bitcoin Core developers
+// Copyright (c) 2016-2017 The Zcash developers
+// Copyright (c) 2018 The Bitcoin Private developers
+// Copyright (c) 2017-2018 The Bitcoin Gold developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -78,6 +81,29 @@ public:
     uint64_t PruneAfterHeight() const { return nPruneAfterHeight; }
     /** Minimum free space (in GB) needed for data directory */
     uint64_t AssumedBlockchainSize() const { return m_assumed_blockchain_size; }
+    unsigned int EquihashN() const { return nEquihashN; }
+    unsigned int EquihashK() const { return nEquihashK; }
+    unsigned int EquihashN(int height) const
+    {
+        if(height >= consensus.BTGEquihashForkHeight) {
+            return nEquihashNnew;
+        } else {
+            return nEquihashN;
+        }
+    }
+    unsigned int EquihashK(int height) const
+    {
+        if(height >= consensus.BTGEquihashForkHeight) {
+            return nEquihashKnew;
+        } else {
+            return nEquihashK;
+        }
+    }
+    bool EquihashUseBTGSalt(int height) const
+    {
+        return height >= consensus.BTGEquihashForkHeight;
+    }
+    unsigned int EquihashSolutionWidth(int height) const;
     /** Minimum free space (in GB) needed for data directory when pruned; Does not include prune target*/
     uint64_t AssumedChainStateSize() const { return m_assumed_chain_state_size; }
     /** Whether it is possible to mine blocks on demand (no retargeting) */
@@ -91,6 +117,8 @@ public:
     const std::vector<SeedSpec6>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
+    /** Checkes if the pubkey script is correct for a given block height */
+    bool IsPremineAddressScript(const CScript& scriptPubKey, uint32_t height) const;
 protected:
     CChainParams() {}
 
@@ -100,6 +128,10 @@ protected:
     uint64_t nPruneAfterHeight;
     uint64_t m_assumed_blockchain_size;
     uint64_t m_assumed_chain_state_size;
+	unsigned int nEquihashN = 0;
+    unsigned int nEquihashK = 0;
+    unsigned int nEquihashNnew = 0;
+    unsigned int nEquihashKnew = 0;
     std::vector<std::string> vSeeds;
     std::vector<unsigned char> base58Prefixes[MAX_BASE58_TYPES];
     std::string bech32_hrp;
@@ -112,6 +144,7 @@ protected:
     bool m_is_mockable_chain;
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
+    std::vector<std::vector<std::string> > vPreminePubkeys;
 };
 
 /**

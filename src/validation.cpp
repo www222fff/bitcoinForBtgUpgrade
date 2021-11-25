@@ -154,6 +154,12 @@ CBlockPolicyEstimator feeEstimator;
 namespace {
     CBlockIndex* pindexBestInvalid = nullptr;
 
+
+    /**
+     * The best finalized block.
+     * This block cannot be reorged in any way, shape or form.
+     */
+    CBlockIndex const *&pindexFinalized = g_chainstate.pindexFinalized;
     RecursiveMutex cs_LastBlockFile;
     std::vector<CBlockFileInfo> vinfoBlockFile;
     int nLastBlockFile = 0;
@@ -352,6 +358,23 @@ static bool IsCurrentForFeeEstimation() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     if (::ChainActive().Height() < pindexBestHeader->nHeight - 1)
         return false;
     return true;
+}
+
+bool static IsBTGHardForkEnabled(int nHeight, const Consensus::Params& params) {
+    return nHeight >= params.BTGHeight;
+}
+
+bool IsBTGHardForkEnabled(const CBlockIndex* pindexPrev, const Consensus::Params& params) {
+    if (pindexPrev == nullptr) {
+        return false;
+    }
+
+    return IsBTGHardForkEnabled(pindexPrev->nHeight, params);
+}
+
+bool IsBTGHardForkEnabledForCurrentBlock(const Consensus::Params& params) {
+    AssertLockHeld(cs_main);
+    return IsBTGHardForkEnabled(chainActive.Tip(), params);
 }
 
 /* Make mempool consistent after a reorg, by re-adding or recursively erasing
@@ -918,6 +941,13 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
                         FormatMoney(::incrementalRelayFee.GetFee(nSize))));
         }
     }
+	
+	unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS;
+    if (!IsBTGHardForkEnabled(chainActive.Tip()->nHeight + 1, Params().GetConsensus())) {
+        // The pending block is not BTG block
+        scriptVerifyFlags |= SCRIPT_FORKID_DISABLED;
+    }
+		
     return true;
 }
 
@@ -1159,8 +1189,13 @@ bool ReadBlockFromDisk(CBlock& block, const FlatFilePos& pos, const Consensus::P
         return error("%s: Deserialize or I/O error - %s at %s", __func__, e.what(), pos.ToString());
     }
 
+    // Check Equihash solution
+    bool postfork = block.nHeight >= (uint32_t)consensusParams.BTGHeight;
+    if (postfork && !CheckEquihashSolution(&block, Params())) {
+        return error("ReadBlockFromDisk: Errors in block header at %s (bad Equihash solution)", pos.ToString());
+    }
     // Check the header
-    if (!CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
+    if (!CheckProofOfWork(block.GetHash(), block.nBits, postfork, consensusParams))
         return error("ReadBlockFromDisk: Errors in block header at %s", pos.ToString());
 
     // Signet only: check block solution
@@ -1413,6 +1448,13 @@ void static InvalidChainFound(CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(c
 {
     if (!pindexBestInvalid || pindexNew->nChainWork > pindexBestInvalid->nChainWork)
         pindexBestInvalid = pindexNew;
+		
+    // If the invalid chain found is supposed to be finalized, we need to move
+    // back the finalization point.
+    if (IsBlockFinalized(pindexNew)) {
+        pindexFinalized = pindexNew->pprev;
+    }
+	
     if (pindexBestHeader != nullptr && pindexBestHeader->GetAncestor(pindexNew->nHeight) == pindexNew) {
         pindexBestHeader = ::ChainActive().Tip();
     }
@@ -1924,6 +1966,12 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
     // Start enforcing BIP147 NULLDUMMY (activated simultaneously with segwit)
     if (IsWitnessEnabled(pindex->pprev, consensusparams)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
+    }
+	
+	if (IsBTGHardForkEnabled(pindex->pprev, consensusparams)) {
+        flags |= SCRIPT_VERIFY_STRICTENC;
+    } else {
+        flags |= SCRIPT_FORKID_DISABLED;
     }
 
     return flags;
@@ -2544,6 +2592,10 @@ bool CChainState::DisconnectTip(BlockValidationState& state, const CChainParams&
         }
     }
 
+    // If the tip is finalized, then undo it.
+    if (pindexFinalized == pindexDelete) {
+        pindexFinalized = pindexDelete->pprev;
+    }
     m_chain.SetTip(pindexDelete->pprev);
 
     UpdateTip(m_mempool, pindexDelete->pprev, chainparams);
@@ -2599,6 +2651,86 @@ public:
     }
 };
 
+static bool FinalizeBlockInternal(CValidationState &state, const CBlockIndex *pindex)
+// EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+{
+    AssertLockHeld(cs_main);
+    if (pindex->nStatus & BLOCK_FAILED_MASK) {
+        // We try to finalize an invalid block.
+        return state.Invalid(error("%s: Trying to finalize invalid block %s",
+                                   __func__, pindex->GetBlockHash().ToString()),
+                             REJECT_INVALID, "finalize-invalid-block",
+                             "", ValidationInvalidReason::CACHED_INVALID);
+    }
+
+    // Check that the request is consistent with current finalization.
+    if (pindexFinalized && !AreOnTheSameFork(pindex, pindexFinalized)) {
+        return state.Invalid(
+            error("%s: Trying to finalize block %s which conflicts "
+                  "with already finalized block",
+                  __func__, pindex->GetBlockHash().ToString()),
+            REJECT_AGAINST_FINALIZED, "bad-fork-prior-finalized",
+            "", ValidationInvalidReason::BLOCK_FINALIZATION);
+    }
+
+    if (IsBlockFinalized(pindex)) {
+        // The block is already finalized.
+        return true;
+    }
+
+    // We have a new block to finalize.
+    pindexFinalized = pindex;
+    return true;
+}
+
+static const CBlockIndex *FindBlockToFinalize(CBlockIndex *pindexNew)
+// EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+{
+    AssertLockHeld(cs_main);
+
+    const int32_t minfinalizationdepth =
+        gArgs.GetArg("-minfinalizationdepth", DEFAULT_MAX_REORG_DEPTH);
+
+    const int64_t minfinalizationage =
+        gArgs.GetArg("-minfinalizationage", DEFAULT_MIN_FINALIZATION_DELAY);
+
+    // Find our candidate.
+    // If minfinalizationdepth is < 0 pindex will be null and auto finalization
+    // disabled
+    const CBlockIndex *pindex =
+        pindexNew->GetAncestor(pindexNew->nHeight - minfinalizationdepth);
+
+    int64_t now = GetTime();
+
+    // If the finalization delay is not expired since the startup time,
+    // finalization should be avoided. Header receive time is not saved to disk
+    // and so cannot be anterior to startup time.
+    if (now < (GetStartupTime() + minfinalizationage)) {
+        return nullptr;
+    }
+
+    // While our candidate is not eligible (finalization delay not expired), try
+    // the previous one.
+    while (pindex && (pindex != pindexFinalized)) {
+        // Check that the block to finalize is known for a long enough time.
+        // This test will ensure that an attacker could not cause a block to
+        // finalize by forking the chain with a depth > minfinalizationdepth.
+        // If the block is loaded from disk, header receive time is 0 and the
+        // block will be finalized. This is safe because the delay since the
+        // node startup is already expired.
+        auto headerReceivedTime = pindex->GetHeaderReceivedTime();
+
+        // If finalization delay is <= 0, finalization always occurs immediately
+        if (now >= (headerReceivedTime + minfinalizationage)) {
+            return pindex;
+        }
+
+        pindex = pindex->pprev;
+    }
+
+    return nullptr;
+}
+
 /**
  * Connect a new block to m_chain. pblock is either nullptr or a pointer to a CBlock
  * corresponding to pindexNew, to bypass loading it again from disk.
@@ -2636,6 +2768,17 @@ bool CChainState::ConnectTip(BlockValidationState& state, const CChainParams& ch
                 InvalidBlockFound(pindexNew, state);
             return error("%s: ConnectBlock %s failed, %s", __func__, pindexNew->GetBlockHash().ToString(), state.ToString());
         }
+
+        // Update the finalized block.
+        const CBlockIndex *pindexToFinalize =
+            FindBlockToFinalize(pindexNew);
+        if (pindexToFinalize &&
+            !FinalizeBlockInternal(state, pindexToFinalize)) {
+            return error("ConnectTip(): FinalizeBlock %s failed (%s)",
+                         pindexNew->GetBlockHash().ToString(),
+                         FormatStateMessage(state));
+        }
+
         nTime3 = GetTimeMicros(); nTimeConnectTotal += nTime3 - nTime2;
         assert(nBlocksTotal > 0);
         LogPrint(BCLog::BENCH, "  - Connect total: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime3 - nTime2) * MILLI, nTimeConnectTotal * MICRO, nTimeConnectTotal * MILLI / nBlocksTotal);
@@ -2680,6 +2823,16 @@ CBlockIndex* CChainState::FindMostWorkChain() {
             pindexNew = *it;
         }
 
+        // If this block will cause a finalized block to be reorged, then we
+        // mark it as invalid.
+        if (pindexFinalized && !AreOnTheSameFork(pindexNew, pindexFinalized)) {
+            LogPrintf("Mark block %s invalid because it forks prior to the finalization point %d.\n",
+                      pindexNew->GetBlockHash().ToString(),
+                      pindexFinalized->nHeight);
+            pindexNew->nStatus |= BLOCK_FAILED_VALID;
+            InvalidChainFound(pindexNew);
+        }
+
         // Check whether all blocks on the path between the currently active chain and the candidate are valid.
         // Just going until the active chain is an optimization, as we know all blocks in it are valid already.
         CBlockIndex *pindexTest = pindexNew;
@@ -2712,6 +2865,13 @@ CBlockIndex* CChainState::FindMostWorkChain() {
                     setBlockIndexCandidates.erase(pindexFailed);
                     pindexFailed = pindexFailed->pprev;
                 }
+
+                if (fFailedChain) {
+                    // We discovered a new chain tip that is either parked or
+                    // invalid, we may want to warn.
+                    CheckForkWarningConditionsOnNewFork(pindexNew);
+                }
+
                 setBlockIndexCandidates.erase(pindexTest);
                 fInvalidAncestor = true;
                 break;
@@ -3136,6 +3296,24 @@ bool CChainState::InvalidateBlock(BlockValidationState& state, const CChainParam
     }
     return true;
 }
+bool FinalizeBlockAndInvalidate(CValidationState &state, CBlockIndex *pindex) {
+    AssertLockHeld(cs_main);
+    if (!FinalizeBlockInternal(state, pindex)) {
+        // state is set by FinalizeBlockInternal.
+        return false;
+    }
+
+    // If the finalized block is not on the active chain, we may need to rewind.
+    if (!chainActive.Contains(pindex)) {
+        const CBlockIndex *pindexFork = chainActive.FindFork(pindex);
+        CBlockIndex *pindexToInvalidate = chainActive.Next(pindexFork);
+        if (pindexToInvalidate) {
+            return InvalidateBlock(state, Params(), pindexToInvalidate);
+        }
+    }
+
+    return true;
+}
 
 bool InvalidateBlock(BlockValidationState& state, const CChainParams& chainparams, CBlockIndex *pindex) {
     return ::ChainstateActive().InvalidateBlock(state, chainparams, pindex);
@@ -3143,6 +3321,12 @@ bool InvalidateBlock(BlockValidationState& state, const CChainParams& chainparam
 
 void CChainState::ResetBlockFailureFlags(CBlockIndex *pindex) {
     AssertLockHeld(cs_main);
+
+    // In case we are reconsidering something before the finalization point,
+    // move the finalization point to the last common ancestor.
+    if (pindexFinalized) {
+        pindexFinalized = LastCommonAncestor(pindex, pindexFinalized);
+    }
 
     int nHeight = pindex->nHeight;
 
@@ -3179,6 +3363,16 @@ void ResetBlockFailureFlags(CBlockIndex *pindex) {
     return ::ChainstateActive().ResetBlockFailureFlags(pindex);
 }
 
+const CBlockIndex *GetFinalizedBlock() {
+    AssertLockHeld(cs_main);
+    return pindexFinalized;
+}
+
+bool IsBlockFinalized(const CBlockIndex *pindex) {
+    AssertLockHeld(cs_main);
+    return pindexFinalized &&
+           pindexFinalized->GetAncestor(pindex->nHeight) == pindex;
+}
 CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
 {
     AssertLockHeld(cs_main);
@@ -3204,6 +3398,7 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block)
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->BuildSkip();
     }
+    pindexNew->nTimeReceived = GetTime();
     pindexNew->nTimeMax = (pindexNew->pprev ? std::max(pindexNew->pprev->nTimeMax, pindexNew->nTime) : pindexNew->nTime);
     pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 0) + GetBlockProof(*pindexNew);
     pindexNew->RaiseValidity(BLOCK_VALID_TREE);
@@ -3340,8 +3535,26 @@ static bool FindUndoPos(BlockValidationState &state, int nFile, FlatFilePos &pos
 
 static bool CheckBlockHeader(const CBlockHeader& block, BlockValidationState& state, const Consensus::Params& consensusParams, bool fCheckPOW = true)
 {
+    // Check Equihash solution is valid
+    bool postfork = block.nHeight >= (uint32_t)consensusParams.BTGHeight;
+    if (fCheckPOW && postfork) {
+        const CChainParams& chainparams = Params();
+        const size_t sol_size = chainparams.EquihashSolutionWidth(block.nHeight);
+        if(block.nSolution.size() != sol_size) {
+            return state.DoS(
+                100, error("CheckBlockHeader(): Equihash solution has invalid size have %d need %d",
+                           block.nSolution.size(), sol_size),
+                REJECT_INVALID, "invalid-solution-size");
+        }
+        if (!CheckEquihashSolution(&block, Params())) {
+            LogPrintf("CheckBlockHeader(): Equihash solution invalid at height %d\n", block.nHeight);
+            return state.DoS(100, error("CheckBlockHeader(): Equihash solution invalid"),
+                            REJECT_INVALID, "invalid-solution");
+        }
+    }
+
     // Check proof of work matches claimed amount
-    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, consensusParams))
+    if (fCheckPOW && !CheckProofOfWork(block.GetHash(), block.nBits, postfork, consensusParams))
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "high-hash", "proof of work failed");
 
     return true;
@@ -3385,7 +3598,11 @@ bool CheckBlock(const CBlock& block, BlockValidationState& state, const Consensu
     // checks that use witness data may be performed here.
 
     // Size limits
-    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
+    int serialization_flags = SERIALIZE_TRANSACTION_NO_WITNESS;
+    if (block.nHeight < (uint32_t)consensusParams.BTGHeight) {
+        serialization_flags |= SERIALIZE_BLOCK_LEGACY;
+    }
+    if (block.vtx.empty() || block.vtx.size() * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT || ::GetSerializeSize(block, PROTOCOL_VERSION | serialization_flags) * WITNESS_SCALE_FACTOR > MAX_BLOCK_WEIGHT)
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-length", "size limits failed");
 
     // First transaction must be coinbase, the rest must not be
@@ -3514,13 +3731,18 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, BlockValidatio
             return state.Invalid(BlockValidationResult::BLOCK_CHECKPOINT, "bad-fork-prior-to-checkpoint");
         }
     }
+	
+    // Check block height for blocks after BTG fork.
+    if (nHeight >= consensusParams.BTGHeight && block.nHeight != (uint32_t)nHeight)
+        return state.Invalid(false, REJECT_INVALID, "bad-height", "incorrect block height");
 
     // Check timestamp against prev
     if (block.GetBlockTime() <= pindexPrev->GetMedianTimePast())
         return state.Invalid(BlockValidationResult::BLOCK_INVALID_HEADER, "time-too-old", "block's timestamp is too early");
 
     // Check timestamp
-    if (block.GetBlockTime() > nAdjustedTime + MAX_FUTURE_BLOCK_TIME)
+    if (block.GetBlockTime() > nAdjustedTime + std::min(consensusParams.BTGMaxFutureBlockTime,
+                                                        BITCOIN_MAX_FUTURE_BLOCK_TIME))
         return state.Invalid(BlockValidationResult::BLOCK_TIME_FUTURE, "time-too-new", "block timestamp too far in the future");
 
     // Reject outdated version blocks when 95% (75% on testnet) of the network has upgraded:
@@ -3572,6 +3794,25 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
         }
     }
 
+    if (nHeight >= consensusParams.BTGHeight &&
+        nHeight < consensusParams.BTGHeight + consensusParams.BTGPremineWindow &&
+        consensusParams.BTGPremineEnforceWhitelist)
+    {
+        if (block.vtx[0]->vout.size() != 1) {
+            return state.DoS(
+                100, error("%s: only one coinbase output is allowed",__func__),
+                REJECT_INVALID, "bad-premine-coinbase-output");
+        }
+        const CTxOut& output = block.vtx[0]->vout[0];
+        bool valid = Params().IsPremineAddressScript(output.scriptPubKey, (uint32_t)nHeight);
+        if (!valid) {
+            return state.DoS(
+                100, error("%s: not in premine whitelist", __func__),
+                REJECT_INVALID, "bad-premine-coinbase-scriptpubkey");
+        }
+    }
+
+
     // Validation for witness commitments.
     // * We compute the witness hash (which is the hash including witnesses) of all the block's transactions, except the
     //   coinbase (where 0x0000....0000 is used instead).
@@ -3615,7 +3856,7 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     // large by filling up the coinbase witness, which doesn't change
     // the block hash, so we couldn't mark the block as permanently
     // failed).
-    if (GetBlockWeight(block) > MAX_BLOCK_WEIGHT) {
+    if (GetBlockWeight(block, consensusParams) > MAX_BLOCK_WEIGHT) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight", strprintf("%s : weight limit failed", __func__));
     }
 
@@ -3778,6 +4019,21 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     // process an unrequested block if it's new and has enough work to
     // advance our tip, and isn't too many blocks ahead.
     bool fAlreadyHave = pindex->nStatus & BLOCK_HAVE_DATA;
+    // Compare block header timestamps and received times of the block and the
+    // chaintip.  If they have the same chain height, use these diffs as a
+    // tie-breaker, attempting to pick the more honestly-mined block.
+    int64_t newBlockTimeDiff = std::llabs(pindex->GetReceivedTimeDiff());
+    int64_t chainTipTimeDiff =
+        chainActive.Tip() ? std::llabs(chainActive.Tip()->GetReceivedTimeDiff()) : 0;
+
+    bool isSameHeight =
+        chainActive.Tip() && (pindex->nChainWork == chainActive.Tip()->nChainWork);
+    if (isSameHeight) {
+        LogPrintf("Chain tip timestamp-to-received-time difference: hash=%s, diff=%d\n",
+                  chainActive.Tip()->GetBlockHash().ToString(), chainTipTimeDiff);
+        LogPrintf("New block timestamp-to-received-time difference: hash=%s, diff=%d\n",
+                  pindex->GetBlockHash().ToString(), newBlockTimeDiff);
+    }
     bool fHasMoreOrSameWork = (m_chain.Tip() ? pindex->nChainWork >= m_chain.Tip()->nChainWork : true);
     // Blocks that are too out-of-order needlessly limit the effectiveness of
     // pruning, because pruning will not delete block files that contain any
@@ -4604,6 +4860,9 @@ void UnloadBlockIndex(CTxMemPool* mempool, ChainstateManager& chainman)
     chainman.Unload();
     pindexBestInvalid = nullptr;
     pindexBestHeader = nullptr;
+    pindexFinalized = nullptr;
+    pindexBestForkTip = nullptr;
+    pindexBestForkBase = nullptr;
     if (mempool) mempool->clear();
     vinfoBlockFile.clear();
     nLastBlockFile = 0;

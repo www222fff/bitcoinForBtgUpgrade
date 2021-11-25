@@ -7,6 +7,8 @@
 #include <config/bitcoin-config.h>
 #endif
 
+#include <base58.h>
+#include <chainparams.h>
 #include <chainparamsbase.h>
 #include <clientversion.h>
 #include <optional.h>
@@ -33,6 +35,8 @@
 
 #include <univalue.h>
 #include <compat/stdin.h>
+#include <string>
+#include <map>
 
 const std::function<std::string(const char*)> G_TRANSLATION_FUN = nullptr;
 UrlDecodeFn* const URL_DECODE = urlDecode;
@@ -70,10 +74,12 @@ static void SetupCliArgs(ArgsManager& argsman)
     argsman.AddArg("-rpcport=<port>", strprintf("Connect to JSON-RPC on <port> (default: %u, testnet: %u, signet: %u, regtest: %u)", defaultBaseParams->RPCPort(), testnetBaseParams->RPCPort(), signetBaseParams->RPCPort(), regtestBaseParams->RPCPort()), ArgsManager::ALLOW_ANY | ArgsManager::NETWORK_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-rpcuser=<user>", "Username for JSON-RPC connections", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-rpcwait", "Wait for RPC server to start", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-rpcwallet=<walletname>", "Send RPC for non-default wallet on RPC server (needs to exactly match corresponding -wallet option passed to bitcoind). This changes the RPC endpoint used, e.g. http://127.0.0.1:8332/wallet/<walletname>", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-rpcwallet=<walletname>", "Send RPC for non-default wallet on RPC server (needs to exactly match corresponding -wallet option passed to bgoldd). This changes the RPC endpoint used, e.g. http://127.0.0.1:8332/wallet/<walletname>", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-stdin", "Read extra arguments from standard input, one per line until EOF/Ctrl-D (recommended for sensitive information such as passphrases). When combined with -stdinrpcpass, the first line from standard input is used for the RPC password.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-stdinrpcpass", "Read RPC password from standard input as a single line. When combined with -stdin, the first line from standard input is used for the RPC password. When combined with -stdinwalletpassphrase, -stdinrpcpass consumes the first line, and -stdinwalletpassphrase consumes the second.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-stdinwalletpassphrase", "Read wallet passphrase from standard input as a single line. When combined with -stdin, the first line from standard input is used for the wallet passphrase.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-convertaddrtobtg=<bitcoin_address>", "Convert a Bitcoin address to Bitcoin Gold address format.", false, OptionsCategory::OPTIONS);
+    argsman.AddArg("-convertaddrtobtc=<bitcoin_gold_address>", "Convert a Bitcoin Gold address back to Bitcoin address format.", false, OptionsCategory::OPTIONS);
 }
 
 /** libevent event log callback */
@@ -102,6 +108,20 @@ public:
 
 };
 
+
+static int ConvertAddressFormat(const std::string& addr, const std::map<uint8_t, uint8_t>& ver_map)
+{
+    std::vector<unsigned char> addr_data;
+    if (!DecodeBase58Check(addr, addr_data) || ver_map.count(addr_data[0]) == 0) {
+        fprintf(stderr, "Invalid input address: %s\n", addr.c_str());
+        return EXIT_FAILURE;
+    }
+    addr_data[0] = ver_map.at(addr_data[0]);
+    std::string new_addr = EncodeBase58Check(addr_data);
+    fprintf(stdout, "%s\n", new_addr.c_str());
+    return EXIT_SUCCESS;
+}
+
 //
 // This function returns either one of EXIT_ codes when it's expected to stop the process or
 // CONTINUE_EXECUTION when it's expected to continue further.
@@ -118,10 +138,10 @@ static int AppInitRPC(int argc, char* argv[])
         std::string strUsage = PACKAGE_NAME " RPC client version " + FormatFullVersion() + "\n";
         if (!gArgs.IsArgSet("-version")) {
             strUsage += "\n"
-                "Usage:  bitcoin-cli [options] <command> [params]  Send command to " PACKAGE_NAME "\n"
-                "or:     bitcoin-cli [options] -named <command> [name=value]...  Send command to " PACKAGE_NAME " (with named arguments)\n"
-                "or:     bitcoin-cli [options] help                List commands\n"
-                "or:     bitcoin-cli [options] help <command>      Get help for a command\n";
+                "Usage:  bgold-cli [options] <command> [params]  Send command to " PACKAGE_NAME "\n"
+                "or:     bgold-cli [options] -named <command> [name=value]...  Send command to " PACKAGE_NAME " (with named arguments)\n"
+                "or:     bgold-cli [options] help                List commands\n"
+                "or:     bgold-cli [options] help <command>      Get help for a command\n";
             strUsage += "\n" + gArgs.GetHelpMessage();
         }
 
@@ -146,6 +166,28 @@ static int AppInitRPC(int argc, char* argv[])
     } catch (const std::exception& e) {
         tfm::format(std::cerr, "Error: %s\n", e.what());
         return EXIT_FAILURE;
+    }
+
+    bool convert_addr_to_btg = gArgs.IsArgSet("-convertaddrtobtg");
+    bool convert_addr_to_btc = gArgs.IsArgSet("-convertaddrtobtc");
+    if (convert_addr_to_btg || convert_addr_to_btc) {
+        std::string chain_name = gArgs.GetChainName();
+        if (chain_name != CBaseChainParams::MAIN) {
+            fprintf(stderr, "Error: Only the address format of mainnet can be converted. You selected: %s\n",
+                    chain_name.c_str());
+            return EXIT_FAILURE;
+        }
+        if (convert_addr_to_btg) {
+            return ConvertAddressFormat(gArgs.GetArg("-convertaddrtobtg", ""), {
+                {0, 38},
+                {5, 23},
+            });
+        } else {
+            return ConvertAddressFormat(gArgs.GetArg("-convertaddrtobtc", ""), {
+                {38, 0},
+                {23, 5},
+            });
+        }
     }
     return CONTINUE_EXECUTION;
 }
@@ -609,7 +651,7 @@ static UniValue CallRPC(BaseRequestHandler* rh, const std::string& strMethod, co
         if (response.error != -1) {
             responseErrorMessage = strprintf(" (error code %d - \"%s\")", response.error, http_errorstring(response.error));
         }
-        throw CConnectionFailed(strprintf("Could not connect to the server %s:%d%s\n\nMake sure the bitcoind server is running and that you are connecting to the correct RPC port.", host, port, responseErrorMessage));
+        throw CConnectionFailed(strprintf("Could not connect to the server %s:%d%s\n\nMake sure the bgoldd server is running and that you are connecting to the correct RPC port.", host, port, responseErrorMessage));
     } else if (response.status == HTTP_UNAUTHORIZED) {
         if (failedToGetAuthCookie) {
             throw std::runtime_error(strprintf(
@@ -689,7 +731,7 @@ static void ParseError(const UniValue& error, std::string& strPrint, int& nRet)
             strPrint += ("error message:\n" + err_msg.get_str());
         }
         if (err_code.isNum() && err_code.get_int() == RPC_WALLET_NOT_SPECIFIED) {
-            strPrint += "\nTry adding \"-rpcwallet=<filename>\" option to bitcoin-cli command line.";
+            strPrint += "\nTry adding \"-rpcwallet=<filename>\" option to bgoldd-cli command line.";
         }
     } else {
         strPrint = "error: " + error.write();

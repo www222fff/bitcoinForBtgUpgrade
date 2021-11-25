@@ -9,8 +9,65 @@
 #include <string>
 #include <version.h>
 #include <consensus/consensus.h>
+#include <consensus/params.h>
 #include <primitives/transaction.h>
 #include <primitives/block.h>
+
+/**
+ * A "reason" why something was invalid, suitable for determining whether the
+ * provider of the object should be banned/ignored/disconnected/etc. These are
+ * much more granular than the rejection codes, which may be more useful for
+ * some other use-cases.
+ */
+enum class ValidationInvalidReason {
+    // txn and blocks:
+    //! not actually invalid
+    NONE,
+    //! invalid by consensus rules (excluding any below reasons)
+    CONSENSUS,
+    /**
+     * Invalid by a recent change to consensus rules.
+     * Currently unused as there are no such consensus rule changes.
+     */
+    RECENT_CONSENSUS_CHANGE,
+    // Only blocks (or headers):
+    //! this object was cached as being invalid, but we don't know why
+    CACHED_INVALID,
+    //! invalid proof of work or time too old
+    BLOCK_INVALID_HEADER,
+    //! the block's data didn't match the data committed to by the PoW
+    BLOCK_MUTATED,
+    //! We don't have the previous block the checked one is built on
+    BLOCK_MISSING_PREV,
+    //! A block this one builds on is invalid
+    BLOCK_INVALID_PREV,
+    //! block timestamp was > 2 hours in the future (or our clock is bad)
+    BLOCK_TIME_FUTURE,
+    //! the block failed to meet one of our checkpoints
+    BLOCK_CHECKPOINT,
+    //! block finalization problems.
+    BLOCK_FINALIZATION,
+    // Only loose txn:
+    //! didn't meet our local policy rules
+    TX_NOT_STANDARD,
+    //! a transaction was missing some of its inputs
+    TX_MISSING_INPUTS,
+    //! transaction spends a coinbase too early, or violates locktime/sequence
+    //! locks
+    TX_PREMATURE_SPEND,
+    /**
+     * Tx already in mempool or conflicts with a tx in the chain
+     * TODO: Currently this is only used if the transaction already exists in
+     * the mempool or on chain,
+     * TODO: ATMP's fMissingInputs and a valid CValidationState being used to
+     * indicate missing inputs
+     */
+    TX_CONFLICT,
+    //! violated mempool's fee/size/descendant/etc limits
+    TX_MEMPOOL_POLICY,
+
+    UNKNOWN,
+};
 
 /** Index marker for when no witness commitment is present in a coinbase transaction. */
 static constexpr int NO_WITNESS_COMMITMENT{-1};
@@ -95,16 +152,19 @@ private:
         M_ERROR,   //!< run-time error
     } m_mode{ModeState::M_VALID};
     Result m_result{};
+    ValidationInvalidReason m_reason = ValidationInvalidReason::UNKNOWN;
     std::string m_reject_reason;
     std::string m_debug_message;
 
 public:
     bool Invalid(Result result,
-                 const std::string& reject_reason = "",
-                 const std::string& debug_message = "")
+                 const std::string &reject_reason="",
+                 const std::string &debug_message="",
+				 ValidationInvalidReason reasonIn=ValidationInvalidReason::UNKNOWN)
     {
         m_result = result;
         m_reject_reason = reject_reason;
+        m_reason = reasonIn;
         m_debug_message = debug_message;
         if (m_mode != ModeState::M_ERROR) m_mode = ModeState::M_INVALID;
         return false;
@@ -134,6 +194,7 @@ public:
 
         return m_reject_reason;
     }
+    ValidationInvalidReason GetReason() const { return m_reason; }
 };
 
 class TxValidationState : public ValidationState<TxValidationResult> {};
@@ -147,9 +208,10 @@ static inline int64_t GetTransactionWeight(const CTransaction& tx)
 {
     return ::GetSerializeSize(tx, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(tx, PROTOCOL_VERSION);
 }
-static inline int64_t GetBlockWeight(const CBlock& block)
+static inline int64_t GetBlockWeight(const CBlock& block, const Consensus::Params& params)
 {
-    return ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, PROTOCOL_VERSION);
+    int ser_flag = (block.nHeight < (uint32_t)params.BTGHeight) ? SERIALIZE_BLOCK_LEGACY : 0;
+    return ::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS | ser_flag) * (WITNESS_SCALE_FACTOR - 1) + ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION | ser_flag);
 }
 static inline int64_t GetTransactionInputWeight(const CTxIn& txin)
 {

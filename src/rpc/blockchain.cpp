@@ -11,6 +11,7 @@
 #include <chainparams.h>
 #include <coins.h>
 #include <consensus/validation.h>
+#include <consensus/params.h>
 #include <core_io.h>
 #include <hash.h>
 #include <index/blockfilterindex.h>
@@ -87,16 +88,29 @@ double GetDifficulty(const CBlockIndex* blockindex)
 {
     CHECK_NONFATAL(blockindex);
 
-    int nShift = (blockindex->nBits >> 24) & 0xff;
-    double dDiff =
-        (double)0x0000ffff / (double)(blockindex->nBits & 0x00ffffff);
+    // Floating point number that is a multiple of the minimum difficulty,
+    // minimum difficulty = 1.0.
 
-    while (nShift < 29)
+    uint32_t bits = blockindex->nBits;
+    uint32_t powLimit = 0;
+
+    if (blockindex->nHeight >= Params().GetConsensus().BTGHeight) {
+        powLimit = UintToArith256(Params().GetConsensus().powLimit).GetCompact();
+    } else {
+        powLimit = 0x1d00ffff;
+    }
+
+    int nShift = (bits >> 24) & 0xff;
+    int nShiftAmount = (powLimit >> 24) & 0xff;
+
+    double dDiff = (double)(powLimit & 0x00ffffff) / (double)(bits & 0x00ffffff);
+
+    while (nShift < nShiftAmount)
     {
         dDiff *= 256.0;
         nShift++;
     }
-    while (nShift > 29)
+    while (nShift > nShiftAmount)
     {
         dDiff /= 256.0;
         nShift--;
@@ -131,11 +145,14 @@ UniValue blockheaderToJSON(const CBlockIndex* tip, const CBlockIndex* blockindex
     result.pushKV("merkleroot", blockindex->hashMerkleRoot.GetHex());
     result.pushKV("time", (int64_t)blockindex->nTime);
     result.pushKV("mediantime", (int64_t)blockindex->GetMedianTimePast());
-    result.pushKV("nonce", (uint64_t)blockindex->nNonce);
+    result.pushKV("nonceUint32", (uint64_t)((uint32_t)blockindex->nNonce.GetUint64(0)));
+    result.pushKV("nonce", blockindex->nNonce.GetHex());
+    result.pushKV("solution", HexStr(blockindex->nSolution));
     result.pushKV("bits", strprintf("%08x", blockindex->nBits));
     result.pushKV("difficulty", GetDifficulty(blockindex));
     result.pushKV("chainwork", blockindex->nChainWork.GetHex());
     result.pushKV("nTx", (uint64_t)blockindex->nTx);
+    result.pushKV("receivedTime", (uint64_t)blockindex->GetHeaderReceivedTime());
 
     if (blockindex->pprev)
         result.pushKV("previousblockhash", blockindex->pprev->GetBlockHash().GetHex());
@@ -154,9 +171,11 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
     const CBlockIndex* pnext;
     int confirmations = ComputeNextBlockAndDepth(tip, blockindex, pnext);
     result.pushKV("confirmations", confirmations);
-    result.pushKV("strippedsize", (int)::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS));
-    result.pushKV("size", (int)::GetSerializeSize(block, PROTOCOL_VERSION));
-    result.pushKV("weight", (int)::GetBlockWeight(block));
+    const Consensus::Params& consensusParams = Params().GetConsensus();
+    int ser_flags = (blockindex->nHeight < consensusParams.BTGHeight) ? SERIALIZE_BLOCK_LEGACY : 0;
+    result.pushKV("strippedsize", (int)::GetSerializeSize(block, PROTOCOL_VERSION | SERIALIZE_TRANSACTION_NO_WITNESS | ser_flags));
+    result.pushKV("size", (int)::GetSerializeSize(block, PROTOCOL_VERSION | ser_flags));
+    result.pushKV("weight", (int)::GetBlockWeight(block, consensusParams));
     result.pushKV("height", blockindex->nHeight);
     result.pushKV("version", block.nVersion);
     result.pushKV("versionHex", strprintf("%08x", block.nVersion));
@@ -176,7 +195,9 @@ UniValue blockToJSON(const CBlock& block, const CBlockIndex* tip, const CBlockIn
     result.pushKV("tx", txs);
     result.pushKV("time", block.GetBlockTime());
     result.pushKV("mediantime", (int64_t)blockindex->GetMedianTimePast());
-    result.pushKV("nonce", (uint64_t)block.nNonce);
+    result.pushKV("nonceUint32", (uint64_t)((uint32_t)block.nNonce.GetUint64(0)));
+    result.pushKV("nonce", block.nNonce.GetHex());
+    result.pushKV("solution", HexStr(block.nSolution));
     result.pushKV("bits", strprintf("%08x", block.nBits));
     result.pushKV("difficulty", GetDifficulty(blockindex));
     result.pushKV("chainwork", blockindex->nChainWork.GetHex());
@@ -780,6 +801,26 @@ static RPCHelpMan getblockhash()
     };
 }
 
+UniValue getfinalizedblockhash(const JSONRPCRequest &request) {
+    if (request.fHelp || request.params.size() != 0)
+        throw std::runtime_error(
+            "getfinalizedblockhash\n"
+            "\nReturns the hash of the currently finalized block.\n"
+            "\nResult:\n"
+            "\"hex\"      (string) the block hash hex encoded\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getfinalizedblockhash", "")
+            + HelpExampleRpc("getfinalizedblockhash", "")
+        );
+
+    LOCK(cs_main);
+    const CBlockIndex *blockIndexFinalized = GetFinalizedBlock();
+    if (blockIndexFinalized) {
+        return blockIndexFinalized->GetBlockHash().GetHex();
+    }
+    return UniValue(UniValue::VSTR);
+}
+
 static RPCHelpMan getblockheader()
 {
     return RPCHelpMan{"getblockheader",
@@ -788,7 +829,7 @@ static RPCHelpMan getblockheader()
                 {
                     {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The block hash"},
                     {"verbose", RPCArg::Type::BOOL, /* default */ "true", "true for a json object, false for the hex-encoded data"},
-                },
+                    {"legacy",  RPCArg::Type::BOOL, /* default */ "false", "indicates if the block should be in legacy format"},
                 {
                     RPCResult{"for verbose = true",
                         RPCResult::Type::OBJ, "", "",
@@ -823,6 +864,11 @@ static RPCHelpMan getblockheader()
     bool fVerbose = true;
     if (!request.params[1].isNull())
         fVerbose = request.params[1].get_bool();
+		
+	bool legacy_format = false;
+    if (request.params.size() == 3 && request.params[2].get_bool() == true) {
+        legacy_format = true;
+    }
 
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
@@ -838,7 +884,8 @@ static RPCHelpMan getblockheader()
 
     if (!fVerbose)
     {
-        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION);
+        int ser_flags = legacy_format ? SERIALIZE_BLOCK_LEGACY : 0;
+        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | ser_flags);
         ssBlock << pblockindex->GetBlockHeader();
         std::string strHex = HexStr(ssBlock);
         return strHex;
@@ -889,6 +936,7 @@ static RPCHelpMan getblock()
                 {
                     {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The block hash"},
                     {"verbosity|verbose", RPCArg::Type::NUM, /* default */ "1", "0 for hex-encoded data, 1 for a json object, and 2 for json object with transaction data"},
+					{"legacy",  RPCArg::Type::BOOL, /* default */ "false", "indicates if the block should be in legacy format"},
                 },
                 {
                     RPCResult{"for verbosity = 0",
@@ -945,7 +993,12 @@ static RPCHelpMan getblock()
         else
             verbosity = request.params[1].get_bool() ? 1 : 0;
     }
-
+	
+    bool legacy_format = false;
+    if (request.params.size() == 3 && request.params[2].get_bool() == true) {
+        legacy_format = true;
+    }
+	
     CBlock block;
     const CBlockIndex* pblockindex;
     const CBlockIndex* tip;
@@ -963,7 +1016,8 @@ static RPCHelpMan getblock()
 
     if (verbosity <= 0)
     {
-        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | RPCSerializationFlags());
+        int ser_flags = legacy_format ? SERIALIZE_BLOCK_LEGACY : 0;
+        CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION | ser_flags | RPCSerializationFlags());
         ssBlock << block;
         std::string strHex = HexStr(ssBlock);
         return strHex;
@@ -1558,6 +1612,48 @@ static RPCHelpMan preciousblock()
 },
     };
 }
+
+UniValue finalizeblock(const JSONRPCRequest& request) {
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+            "finalizeblock \"blockhash\"\n"
+            "\nTreats a block as final. It cannot be reorged. Any chain\n"
+            "that does not contain this block is invalid. Used on a less\n"
+            "work chain, it can effectively PUTS YOU OUT OF CONSENSUS.\n"
+            "USE WITH CAUTION!\n"
+            "\nArguments:\n"
+            "1. \"blockhash\"   (string, required) the hash of the block to mark as finalized\n"
+            "\nResult:\n"
+            "\nExamples:\n"
+            + HelpExampleCli("finalizeblock", "\"blockhash\"")
+            + HelpExampleRpc("finalizeblock", "\"blockhash\"")
+        );
+
+    std::string strHash = request.params[0].get_str();
+    uint256 hash(uint256S(strHash));
+    CValidationState state;
+
+    {
+        LOCK(cs_main);
+        CBlockIndex *pblockindex = LookupBlockIndex(hash);
+        if (!pblockindex) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+        }
+
+        FinalizeBlockAndInvalidate(state, pblockindex);
+    }
+
+    if (state.IsValid()) {
+        ActivateBestChain(state, Params());
+    }
+
+    if (!state.IsValid()) {
+        throw JSONRPCError(RPC_DATABASE_ERROR, FormatStateMessage(state));
+    }
+
+    return NullUniValue;
+}
+
 
 static RPCHelpMan invalidateblock()
 {
@@ -2472,9 +2568,9 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getblockstats",          &getblockstats,          {"hash_or_height", "stats"} },
     { "blockchain",         "getbestblockhash",       &getbestblockhash,       {} },
     { "blockchain",         "getblockcount",          &getblockcount,          {} },
-    { "blockchain",         "getblock",               &getblock,               {"blockhash","verbosity|verbose"} },
+    { "blockchain",         "getblock",               &getblock,               {"blockhash","verbosity|verbose","legacy"} },
     { "blockchain",         "getblockhash",           &getblockhash,           {"height"} },
-    { "blockchain",         "getblockheader",         &getblockheader,         {"blockhash","verbose"} },
+    { "blockchain",         "getblockheader",         &getblockheader,         {"blockhash","verbose","legacy"} },
     { "blockchain",         "getchaintips",           &getchaintips,           {} },
     { "blockchain",         "getdifficulty",          &getdifficulty,          {} },
     { "blockchain",         "getmempoolancestors",    &getmempoolancestors,    {"txid","verbose"} },
@@ -2493,6 +2589,8 @@ static const CRPCCommand commands[] =
     { "blockchain",         "getblockfilter",         &getblockfilter,         {"blockhash", "filtertype"} },
 
     /* Not shown in help */
+    { "hidden",             "getfinalizedblockhash",  &getfinalizedblockhash,  {} },
+    { "hidden",             "finalizeblock",          &finalizeblock,          {"blockhash"} },
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
     { "hidden",             "reconsiderblock",        &reconsiderblock,        {"blockhash"} },
     { "hidden",             "waitfornewblock",        &waitfornewblock,        {"timeout"} },

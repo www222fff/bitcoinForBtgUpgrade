@@ -14,20 +14,21 @@
 #include <uint256.h>
 
 #include <vector>
+#include <string.h>
 
 /**
  * Maximum amount of time that a block timestamp is allowed to exceed the
  * current network-adjusted time before the block will be accepted.
  */
-static constexpr int64_t MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60;
+static constexpr int64_t BITCOIN_MAX_FUTURE_BLOCK_TIME = 2 * 60 * 60;
 
 /**
  * Timestamp window used as a grace period by code that compares external
  * timestamps (such as timestamps passed to RPCs, or wallet key creation times)
  * to block timestamps. This should be set at least as high as
- * MAX_FUTURE_BLOCK_TIME.
+ * BITCOIN_MAX_FUTURE_BLOCK_TIME.
  */
-static constexpr int64_t TIMESTAMP_WINDOW = MAX_FUTURE_BLOCK_TIME;
+static constexpr int64_t TIMESTAMP_WINDOW = BITCOIN_MAX_FUTURE_BLOCK_TIME;
 
 /**
  * Maximum gap between node time and block time used
@@ -176,18 +177,30 @@ public:
     //! block header
     int32_t nVersion{0};
     uint256 hashMerkleRoot{};
+    uint32_t nReserved[7];
     uint32_t nTime{0};
     uint32_t nBits{0};
     uint32_t nNonce{0};
+    std::vector<unsigned char> nSolution;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     int32_t nSequenceId{0};
 
+    //! (memory only) block header metadata
+    uint64_t nTimeReceived{0};
+
     //! (memory only) Maximum nTime in the chain up to and including this block.
     unsigned int nTimeMax{0};
 
+    void SetNull()
+    {
+         memset(nReserved, 0, sizeof(nReserved));
+         nSolution.clear();
+    }
+
     CBlockIndex()
     {
+        SetNull();
     }
 
     explicit CBlockIndex(const CBlockHeader& block)
@@ -197,6 +210,13 @@ public:
           nBits{block.nBits},
           nNonce{block.nNonce}
     {
+        SetNull();
+
+        // TODO(h4x3rotab): Copy nHeight or not?
+        nHeight        = block.nHeight;
+        memcpy(nReserved, block.nReserved, sizeof(nReserved));
+        nTimeReceived  = 0;
+        nSolution      = block.nSolution;
     }
 
     FlatFilePos GetBlockPos() const {
@@ -224,9 +244,12 @@ public:
         if (pprev)
             block.hashPrevBlock = pprev->GetBlockHash();
         block.hashMerkleRoot = hashMerkleRoot;
+        block.nHeight        = nHeight;
+        memcpy(block.nReserved, nReserved, sizeof(block.nReserved));
         block.nTime          = nTime;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.nSolution      = nSolution;
         return block;
     }
 
@@ -252,6 +275,16 @@ public:
     int64_t GetBlockTimeMax() const
     {
         return (int64_t)nTimeMax;
+    }
+
+    int64_t GetHeaderReceivedTime() const
+    {
+        return nTimeReceived;
+    }
+
+    int64_t GetReceivedTimeDiff() const
+    {
+        return GetHeaderReceivedTime() - GetBlockTime();
     }
 
     static constexpr int nMedianTimeSpan = 11;
@@ -314,6 +347,8 @@ arith_uint256 GetBlockProof(const CBlockIndex& block);
 int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& from, const CBlockIndex& tip, const Consensus::Params&);
 /** Find the forking point between two chain tips. */
 const CBlockIndex* LastCommonAncestor(const CBlockIndex* pa, const CBlockIndex* pb);
+/** Check if two block index are on the same fork. */
+bool AreOnTheSameFork(const CBlockIndex *pa, const CBlockIndex *pb);
 
 
 /** Used to marshal pointers into hashes for db storage. */
@@ -346,9 +381,13 @@ public:
         READWRITE(obj.nVersion);
         READWRITE(obj.hashPrev);
         READWRITE(obj.hashMerkleRoot);
+        for(size_t i = 0; i < (sizeof(nReserved) / sizeof(nReserved[0])); i++) {
+            READWRITE(obj.nReserved[i]);
+        }
         READWRITE(obj.nTime);
         READWRITE(obj.nBits);
         READWRITE(obj.nNonce);
+        READWRITE(obj.nSolution);
     }
 
     uint256 GetBlockHash() const
@@ -357,9 +396,12 @@ public:
         block.nVersion        = nVersion;
         block.hashPrevBlock   = hashPrev;
         block.hashMerkleRoot  = hashMerkleRoot;
+        block.nHeight         = nHeight;
+        memcpy(block.nReserved, nReserved, sizeof(block.nReserved));
         block.nTime           = nTime;
         block.nBits           = nBits;
         block.nNonce          = nNonce;
+        block.nSolution       = nSolution;
         return block.GetHash();
     }
 

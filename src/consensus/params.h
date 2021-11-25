@@ -74,6 +74,18 @@ struct Params {
     /** Don't warn about unknown BIP 9 activations below this height.
      * This prevents us from warning about the CSV and segwit activations. */
     int MinBIP9WarningHeight;
+	
+	    /** Block height at which Bitcoin GPU hard fork becomes active */
+    int BTGHeight;
+    /** Block height at which Zawy's LWMA difficulty algorithm becomes active */
+    int BTGZawyLWMAHeight;
+    /** Block height at which Equihash<144,5> becomes active */
+    int BTGEquihashForkHeight;
+    /** Limit BITCOIN_MAX_FUTURE_BLOCK_TIME **/
+    int64_t BTGMaxFutureBlockTime;
+    /** Premining blocks for Bitcoin GPU hard fork **/
+    int BTGPremineWindow;
+    bool BTGPremineEnforceWhitelist;
     /**
      * Minimum blocks including miner confirmation of the total of 2016 blocks in a retargeting period,
      * (nPowTargetTimespan / nPowTargetSpacing) which is also used for BIP9 deployments.
@@ -84,12 +96,15 @@ struct Params {
     BIP9Deployment vDeployments[MAX_VERSION_BITS_DEPLOYMENTS];
     /** Proof of work parameters */
     uint256 powLimit;
+    uint256 powLimitLegacy;
+    uint256 powLimitStart;
+    
+    const uint256& PowLimit(bool postfork) const { return postfork ? powLimit : powLimitLegacy; }
     bool fPowAllowMinDifficultyBlocks;
     bool fPowNoRetargeting;
     int64_t nPowTargetSpacing;
-    int64_t nPowTargetTimespan;
-    int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespan / nPowTargetSpacing; }
-    /** The best chain should have at least this much work */
+    int64_t nPowTargetTimespanLegacy;
+    int64_t DifficultyAdjustmentInterval() const { return nPowTargetTimespanLegacy / nPowTargetSpacing; }
     uint256 nMinimumChainWork;
     /** By default assume that the signatures in ancestors of this block are valid */
     uint256 defaultAssumeValid;
@@ -100,6 +115,38 @@ struct Params {
      */
     bool signet_blocks{false};
     std::vector<uint8_t> signet_challenge;
+    // Params for Digishield difficulty adjustment algorithm. (Used by mainnet currently.)
+    int64_t nDigishieldAveragingWindow;
+    int64_t nDigishieldMaxAdjustDown;
+    int64_t nDigishieldMaxAdjustUp;
+    int64_t DigishieldAveragingWindowTimespan() const { return nDigishieldAveragingWindow * nPowTargetSpacing; }
+    int64_t DigishieldMinActualTimespan() const {
+        return (DigishieldAveragingWindowTimespan() * (100 - nDigishieldMaxAdjustUp)) / 100;
+    }
+    int64_t DigishieldMaxActualTimespan() const {
+        return (DigishieldAveragingWindowTimespan() * (100 + nDigishieldMaxAdjustDown)) / 100;
+    }
+
+    // Params for Zawy's LWMA difficulty adjustment algorithm.
+    int64_t nZawyLwmaAveragingWindow;
+    int64_t nZawyLwmaAdjustedWeight;  // k = (N+1)/2 * 0.998 * T
+    int64_t nZawyLwmaMinDenominator;
+    bool bZawyLwmaSolvetimeLimitation;
+
+    // Legacy params for Zawy's LWMA before the PoW fork. Only used by testnet
+    int64_t nZawyLwmaAdjustedWeightLegacy;  // k = (N+1)/2 * 0.9989^(500/N) * T
+    int64_t nZawyLwmaMinDenominatorLegacy;
+
+    int64_t ZawyLwmaAdjustedWeight(int height) const {
+        return (height >= BTGEquihashForkHeight)
+            ? nZawyLwmaAdjustedWeight
+            : nZawyLwmaAdjustedWeightLegacy;
+    }
+    int64_t ZawyLwmaMinDenominator(int height) const {
+        return (height >= BTGEquihashForkHeight)
+            ? nZawyLwmaMinDenominator
+            : nZawyLwmaMinDenominatorLegacy;
+    }
 };
 } // namespace Consensus
 
