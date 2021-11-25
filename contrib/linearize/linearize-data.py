@@ -21,6 +21,19 @@ from binascii import unhexlify
 
 settings = {}
 
+""" Block header format of Bicoin Gold.
+4+32+32+32+4+4+32 = 140
+  0   4           self.nVersion = struct.unpack("<i", f.read(4))[0]
+  4  32           self.hashPrevBlock = deser_uint256(f)
+ 36  32           self.hashMerkleRoot = deser_uint256(f)
+ 68   4           self.nHeight = struct.unpack("<I", f.read(4))
+ 72 4*7           self.nReserved = [struct.unpack("<I", f.read(4)) for _ in range(7)]
+100   4           self.nTime = struct.unpack("<I", f.read(4))[0]
+104   4           self.nBits = struct.unpack("<I", f.read(4))[0]
+108  32           self.nNonce = deser_uint256(f)
+140   -           self.nSolution = deser_byte_vector(f)
+"""
+
 def hex_switchEndian(s):
     """ Switches the endianness of a hex string (in pairs of hex chars) """
     pairList = [s[i:i+2].encode() for i in range(0, len(s), 2)]
@@ -58,7 +71,9 @@ def calc_hdr_hash(blk_hdr):
 
     return hash2_o
 
-def calc_hash_str(blk_hdr):
+def calc_hash_str(blk_hdr, btg_hash):
+    if not btg_hash:
+        blk_hdr = blk_hdr[0:68] + blk_hdr[100:112]
     hash = calc_hdr_hash(blk_hdr)
     hash = bufreverse(hash)
     hash = wordreverse(hash)
@@ -66,7 +81,7 @@ def calc_hash_str(blk_hdr):
     return hash_str
 
 def get_blk_dt(blk_hdr):
-    members = struct.unpack("<I", blk_hdr[68:68+4])
+    members = struct.unpack("<I", blk_hdr[100:100+4])
     nTime = members[0]
     dt = datetime.datetime.fromtimestamp(nTime)
     dt_ym = datetime.datetime(dt.year, dt.month, 1)
@@ -92,7 +107,29 @@ def mkblockmap(blkindex):
     for height,hash in enumerate(blkindex):
         blkmap[hash] = height
     return blkmap
+	
+def deser_compact_size(f):
+    nit = struct.unpack("<B", f.read(1))[0]
+    if nit == 253:
+        nit = struct.unpack("<H", f.read(2))[0]
+    elif nit == 254:
+        nit = struct.unpack("<I", f.read(4))[0]
+    elif nit == 255:
+        nit = struct.unpack("<Q", f.read(8))[0]
+    return nit
 
+def ser_compact_size(l):
+    r = b""
+    if l < 253:
+        r = struct.pack("B", l)
+    elif l < 0x10000:
+        r = struct.pack("<BH", 253, l)
+    elif l < 0x100000000:
+        r = struct.pack("<BI", 254, l)
+    else:
+        r = struct.pack("<BQ", 255, l)
+    return r
+	
 # This gets the first block file ID that exists from the input block
 # file directory.
 def getFirstBlockFileId(block_dir_path):
@@ -247,11 +284,16 @@ class BlockDataCopier:
                 continue
             inLenLE = inhdr[4:]
             su = struct.unpack("<I", inLenLE)
-            inLen = su[0] - 80 # length without header
-            blk_hdr = self.inF.read(80)
+            blk_hdr = b''
+            blk_hdr += self.inF.read(140)
+            nSol = deser_compact_size(self.inF)
+            blk_hdr += ser_compact_size(nSol)
+            blk_hdr += self.inF.read(nSol)
+            inLen = su[0] - len(blk_hdr) # length without header
             inExtent = BlockExtent(self.inFn, self.inF.tell(), inhdr, blk_hdr, inLen)
 
-            self.hash_str = calc_hash_str(blk_hdr)
+            blk_height = struct.unpack('<I', blk_hdr[68:68+4])[0]
+            self.hash_str = calc_hash_str(blk_hdr, blk_height >= 491407)
             if not self.hash_str in blkmap:
                 # Because blocks can be written to files out-of-order as of 0.10, the script
                 # may encounter blocks it doesn't know about. Treat as debug output.
@@ -311,7 +353,7 @@ if __name__ == '__main__':
     settings['rev_hash_bytes'] = settings['rev_hash_bytes'].lower()
 
     if 'netmagic' not in settings:
-        settings['netmagic'] = 'f9beb4d9'
+        settings['netmagic'] = 'e1476d44'
     if 'genesis' not in settings:
         settings['genesis'] = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
     if 'input' not in settings:

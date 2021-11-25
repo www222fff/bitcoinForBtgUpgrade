@@ -5,19 +5,19 @@
 # See "man systemd.service" for details.
 
 # Note that almost all daemon options could be specified in
-# /etc/bitcoin/bitcoin.conf, but keep in mind those explicitly
+# /etc/bitcoingold/bitcoingold.conf, but keep in mind those explicitly
 # specified as arguments in ExecStart= will override those in the
 # config file.
 
 [Unit]
-Description=Bitcoin daemon
+Description=Bitcoin Gold daemon
 After=network.target
 
 [Service]
 ExecStart=/usr/bin/bitcoind -daemon \
-                            -pid=/run/bitcoind/bitcoind.pid \
-                            -conf=/etc/bitcoin/bitcoin.conf \
-                            -datadir=/var/lib/bitcoind
+                            -pid=/run/bgoldd/bgoldd.pid \
+                            -conf=/etc/bitcoingold/bitcoingold.conf \
+                            -datadir=/var/lib/bgoldd
 
 # Make sure the config directory is readable by the service user
 PermissionsStartOnly=true
@@ -27,7 +27,7 @@ ExecStartPre=/bin/chgrp bitcoin /etc/bitcoin
 ####################
 
 Type=forking
-PIDFile=/run/bitcoind/bitcoind.pid
+PIDFile=/run/bgoldd/bgoldd.pid
 Restart=on-failure
 TimeoutStopSec=600
 
@@ -38,16 +38,16 @@ TimeoutStopSec=600
 User=bitcoin
 Group=bitcoin
 
-# /run/bitcoind
-RuntimeDirectory=bitcoind
+# /run/bgoldd
+RuntimeDirectory=bgoldd
 RuntimeDirectoryMode=0710
 
-# /etc/bitcoin
-ConfigurationDirectory=bitcoin
+# /etc/bitcoingold
+ConfigurationDirectory=bitcoingold
 ConfigurationDirectoryMode=0710
 
-# /var/lib/bitcoind
-StateDirectory=bitcoind
+# /var/lib/bgoldd
+StateDirectory=bgoldd
 StateDirectoryMode=0710
 
 # Hardening measures

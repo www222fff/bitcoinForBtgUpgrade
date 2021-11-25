@@ -130,7 +130,7 @@ _bitcoin_cli() {
             ;;
     esac
 } &&
-complete -F _bitcoin_cli bitcoin-cli
+complete -F _bitcoin_cli bgold-cli
 
 # Local variables:
 # mode: shell-script

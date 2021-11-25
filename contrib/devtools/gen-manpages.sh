@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2016-2019 The Bitcoin Core developers
+# Copyright (c) 2016-2019 The Bitcoin Gold developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,8 +10,8 @@ BUILDDIR=${BUILDDIR:-$TOPDIR}
 BINDIR=${BINDIR:-$BUILDDIR/src}
 MANDIR=${MANDIR:-$TOPDIR/doc/man}
 
-BITCOIND=${BITCOIND:-$BINDIR/bitcoind}
-BITCOINCLI=${BITCOINCLI:-$BINDIR/bitcoin-cli}
+BITCOIND=${BITCOIND:-$BINDIR/bgoldd}
+BITCOINCLI=${BITCOINCLI:-$BINDIR/bgold-cli}
 BITCOINTX=${BITCOINTX:-$BINDIR/bitcoin-tx}
 WALLET_TOOL=${WALLET_TOOL:-$BINDIR/bitcoin-wallet}
 BITCOINQT=${BITCOINQT:-$BINDIR/qt/bitcoin-qt}
