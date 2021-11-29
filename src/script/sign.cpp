@@ -493,7 +493,8 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, nHashType), prevPubKey, sigdata);
+            bool no_forkid = !(nHashType & SIGHASH_FORKID);
+            ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, no_forkid, nHashType), prevPubKey, sigdata, no_forkid);
         }
 
         UpdateInput(txin, sigdata);

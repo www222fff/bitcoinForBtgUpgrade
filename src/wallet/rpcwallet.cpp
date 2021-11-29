@@ -415,7 +415,8 @@ UniValue SendMoney(CWallet* const pwallet, const CCoinControl &coin_control, std
     bilingual_str error;
     CTransactionRef tx;
     FeeCalculation fee_calc_out;
-    const bool fCreated = pwallet->CreateTransaction(recipients, tx, nFeeRequired, nChangePosRet, error, coin_control, fee_calc_out, true);
+    bool no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    const bool fCreated = pwallet->CreateTransaction(recipients, tx, nFeeRequired, nChangePosRet, no_forkid, error, coin_control, fee_calc_out, true);
     if (!fCreated) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, error.original);
     }
@@ -3318,8 +3319,14 @@ RPCHelpMan signrawtransactionwithwallet()
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
             "       \"ALL|ANYONECANPAY\"\n"
+            "       \"ALL|FORKID\"\n"
+            "       \"ALL|FORKID|ANYONECANPAY\"\n"
             "       \"NONE|ANYONECANPAY\"\n"
+            "       \"NONE|FORKID\"\n"
+            "       \"NONE|FORKID|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\""},
+            "       \"SINGLE|FORKID\"\n"
+            "       \"SINGLE|FORKID|ANYONECANPAY\"\n"
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -3451,7 +3458,7 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
 
     if (pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS) && !want_psbt) {
         if (!pwallet->chain().rpcEnableDeprecated("bumpfee")) {
-            throw JSONRPCError(RPC_METHOD_DEPRECATED, "Using bumpfee with wallets that have private keys disabled is deprecated. Use psbtbumpfee instead or restart bitcoind with -deprecatedrpc=bumpfee. This functionality will be removed in 0.22");
+            throw JSONRPCError(RPC_METHOD_DEPRECATED, "Using bumpfee with wallets that have private keys disabled is deprecated. Use psbtbumpfee instead or restart bgoldd with -deprecatedrpc=bumpfee. This functionality will be removed in 0.22");
         }
         want_psbt = true;
     }
@@ -3541,7 +3548,12 @@ static RPCHelpMan bumpfee_helper(std::string method_name)
     } else {
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
-        const TransactionError err = pwallet->FillPSBT(psbtx, complete, SIGHASH_ALL, false /* sign */, true /* bip32derivs */);
+	bool no_forkid;
+	{
+	    LOCK(cs_main);
+	    no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+	}		
+        const TransactionError err = pwallet->FillPSBT(psbtx, complete, no_forkid, SIGHASH_ALL, false /* sign */, true /* bip32derivs */);
         CHECK_NONFATAL(err == TransactionError::OK);
         CHECK_NONFATAL(!complete);
         CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
@@ -4161,7 +4173,12 @@ static RPCHelpMan send()
 
             // Fill transaction with our data and sign
             bool complete = true;
-            const TransactionError err = pwallet->FillPSBT(psbtx, complete, SIGHASH_ALL, true, false);
+	    bool no_forkid;
+	    {
+	        LOCK(cs_main);
+	        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+	    }
+            const TransactionError err = pwallet->FillPSBT(psbtx, complete, no_forkid, SIGHASH_ALL, true, false);
             if (err != TransactionError::OK) {
                 throw JSONRPCTransactionError(err);
             }
@@ -4282,8 +4299,14 @@ static RPCHelpMan walletprocesspsbt()
             "       \"NONE\"\n"
             "       \"SINGLE\"\n"
             "       \"ALL|ANYONECANPAY\"\n"
+            "       \"ALL|FORKID\"\n"
+            "       \"ALL|FORKID|ANYONECANPAY\"\n"
             "       \"NONE|ANYONECANPAY\"\n"
-            "       \"SINGLE|ANYONECANPAY\""},
+            "       \"NONE|FORKID\"\n"
+            "       \"NONE|FORKID|ANYONECANPAY\"\n"
+            "       \"SINGLE|ANYONECANPAY\"\n"
+            "       \"SINGLE|FORKID\"\n"
+            "       \"SINGLE|FORKID|ANYONECANPAY\"\n"},
                     {"bip32derivs", RPCArg::Type::BOOL, /* default */ "true", "Include BIP 32 derivation paths for public keys if we know them"},
                 },
                 RPCResult{
@@ -4311,14 +4334,20 @@ static RPCHelpMan walletprocesspsbt()
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
     }
 
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+
     // Get the sighash type
-    int nHashType = ParseSighashString(request.params[2]);
+    int nHashType = ParseSighashString(request.params[2], !no_forkid);
 
     // Fill transaction with our data and also sign
     bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
     bool bip32derivs = request.params[3].isNull() ? true : request.params[3].get_bool();
     bool complete = true;
-    const TransactionError err = pwallet->FillPSBT(psbtx, complete, nHashType, sign, bip32derivs);
+    const TransactionError err = pwallet->FillPSBT(psbtx, complete, no_forkid, nHashType, sign, bip32derivs);
     if (err != TransactionError::OK) {
         throw JSONRPCTransactionError(err);
     }
@@ -4444,7 +4473,12 @@ static RPCHelpMan walletcreatefundedpsbt()
     // Fill transaction with out data but don't sign
     bool bip32derivs = request.params[4].isNull() ? true : request.params[4].get_bool();
     bool complete = true;
-    const TransactionError err = pwallet->FillPSBT(psbtx, complete, 1, false, bip32derivs);
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+    const TransactionError err = pwallet->FillPSBT(psbtx, complete, no_forkid, 1, false, bip32derivs);
     if (err != TransactionError::OK) {
         throw JSONRPCTransactionError(err);
     }

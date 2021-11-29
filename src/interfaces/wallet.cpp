@@ -345,7 +345,13 @@ public:
         bool& complete,
         size_t* n_signed) override
     {
-        return m_wallet->FillPSBT(psbtx, complete, sighash_type, sign, bip32derivs, n_signed);
+        bool no_forkid;
+        {
+            LOCK(cs_main);
+            no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+        }
+
+        return m_wallet->FillPSBT(psbtx, complete, no_forkid, sighash_type, sign, bip32derivs, n_signed);
     }
     WalletBalances getBalances() override
     {

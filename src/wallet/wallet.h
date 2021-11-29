@@ -972,6 +972,7 @@ public:
      */
     TransactionError FillPSBT(PartiallySignedTransaction& psbtx,
                   bool& complete,
+		  bool no_forkid,
                   int sighash_type = 1 /* SIGHASH_ALL */,
                   bool sign = true,
                   bool bip32derivs = true,

@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <chainparams.h>
 #include <interfaces/chain.h>
 #include <policy/fees.h>
 #include <policy/policy.h>
@@ -242,7 +243,8 @@ Result CreateRateBumpTransaction(CWallet& wallet, const uint256& txid, const CCo
 
 bool SignTransaction(CWallet& wallet, CMutableTransaction& mtx) {
     LOCK(wallet.cs_wallet);
-    return wallet.SignTransaction(mtx);
+    bool no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    return wallet.SignTransaction(mtx, no_forkid);
 }
 
 Result CommitTransaction(CWallet& wallet, const uint256& txid, CMutableTransaction&& mtx, std::vector<bilingual_str>& errors, uint256& bumped_txid)
