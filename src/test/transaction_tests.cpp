@@ -350,6 +350,7 @@ static void CheckWithFlag(const CTransactionRef& output, const CMutableTransacti
 {
     ScriptError error;
     CTransaction inputi(input);
+    flags |= SCRIPT_FORKID_DISABLED;
     bool ret = VerifyScript(inputi.vin[0].scriptSig, output->vout[0].scriptPubKey, &inputi.vin[0].scriptWitness, flags, TransactionSignatureChecker(&inputi, 0, output->vout[0].nValue), &error);
     assert(ret == success);
 }
@@ -418,7 +419,7 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
 
     // sign all inputs
     for(uint32_t i = 0; i < mtx.vin.size(); i++) {
-        bool hashSigned = SignSignature(keystore, scriptPubKey, mtx, i, 1000, sigHashes.at(i % sigHashes.size()));
+        bool hashSigned = SignSignature(keystore, scriptPubKey, mtx, i, 1000,  SIGHASH_FORKID | sigHashes.at(i % sigHashes.size()));
         assert(hashSigned);
     }
 
@@ -463,9 +464,9 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
 SignatureData CombineSignatures(const CMutableTransaction& input1, const CMutableTransaction& input2, const CTransactionRef tx)
 {
     SignatureData sigdata;
-    sigdata = DataFromTransaction(input1, 0, tx->vout[0]);
-    sigdata.MergeSignatureData(DataFromTransaction(input2, 0, tx->vout[0]));
-    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&input1, 0, tx->vout[0].nValue), tx->vout[0].scriptPubKey, sigdata);
+    sigdata = DataFromTransaction(input1, 0, tx->vout[0], true);
+    sigdata.MergeSignatureData(DataFromTransaction(input2, 0, tx->vout[0], true));
+    ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&input1, 0, tx->vout[0].nValue, true, SIGHASH_ALL), tx->vout[0].scriptPubKey, sigdata, true);
     return sigdata;
 }
 
