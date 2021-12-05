@@ -120,14 +120,14 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
     CChainParams chainparams(Params());
 
-    while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, chainparams.GetConsensus()) && !ShutdownRequested()) {
-        ++block.nNonce;
+    while (max_tries > 0 && (uint32_t)block.nNonce.GetUint64(0) < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, false, chainparams.GetConsensus()) && !ShutdownRequested()) {
+	block.nNonce = ArithToUint256(UintToArith256(block.nNonce) + 1);
         --max_tries;
     }
     if (max_tries == 0 || ShutdownRequested()) {
         return false;
     }
-    if (block.nNonce == std::numeric_limits<uint32_t>::max()) {
+    if ((uint32_t)block.nNonce.GetUint64(0) == std::numeric_limits<uint32_t>::max()) {
         return true;
     }
 
@@ -142,14 +142,12 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
 static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& mempool, const CScript& coinbase_script, int nGenerate, uint64_t nMaxTries)
 {
-    static const int nInnerLoopBitcoinMask = 0x1FFFF;
     static const int nInnerLoopBitcoinCount = 0x10000;
     static const int nInnerLoopEquihashMask = 0xFFFF;
     static const int nInnerLoopEquihashCount = 0xFFFF;
     int nHeightEnd = 0;
     int nHeight = 0;
     int nInnerLoopCount;
-    int nInnerLoopMask;
 
     {   // Don't keep cs_main locked
         LOCK(cs_main);
@@ -180,7 +178,6 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
 		
         if (pblock->nHeight < (uint32_t)params.GetConsensus().BTGHeight) {
             // Solve sha256d.
-            nInnerLoopMask = nInnerLoopBitcoinMask;
             nInnerLoopCount = nInnerLoopBitcoinCount;
             while (nMaxTries > 0 && (int)pblock->nNonce.GetUint64(0) < nInnerLoopCount &&
                    !CheckProofOfWork(pblock->GetHash(), pblock->nBits, false, Params().GetConsensus())) {
@@ -189,7 +186,6 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
             }
         } else {
             // Solve Equihash.
-            nInnerLoopMask = nInnerLoopEquihashMask;
             nInnerLoopCount = nInnerLoopEquihashCount;
             n = params.EquihashN(pblock->nHeight);
             k = params.EquihashK(pblock->nHeight);
@@ -1086,7 +1082,7 @@ static UniValue getblocksubsidy(const JSONRPCRequest& request)
     RPCTypeCheck(request.params, {UniValue::VNUM});
 
     LOCK(cs_main);
-    int nHeight = (request.params.size() == 1) ? request.params[0].get_int() : chainActive.Height();
+    int nHeight = (request.params.size() == 1) ? request.params[0].get_int() : ::ChainActive().Height();
     if (nHeight < 0) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Block height out of range.");
     }

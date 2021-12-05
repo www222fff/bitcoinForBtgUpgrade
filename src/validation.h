@@ -97,7 +97,7 @@ static const uint64_t MIN_DISK_SPACE_FOR_BLOCK_FILES = 550 * 1024 * 1024;
 /** Default for -minfinalizationdepth */
 static const int DEFAULT_MAX_REORG_DEPTH = 9;
 
- * This is the minimum time between a block header reception and the block
+/* This is the minimum time between a block header reception and the block
  * finalization.
  * This value should be >> block propagation and validation time
  */
@@ -765,7 +765,7 @@ void ResetBlockFailureFlags(CBlockIndex* pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_mai
  * Mark a block as finalized.
  * A finalized block can not be reorged in any way.
  */
-bool FinalizeBlockAndInvalidate(CValidationState &state, CBlockIndex *pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+bool FinalizeBlockAndInvalidate(BlockValidationState &state, CBlockIndex *pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
 /**
  * Retrieve the topmost finalized block.

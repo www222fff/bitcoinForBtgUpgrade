@@ -388,7 +388,8 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
         //serror is set
         return false;
     }
-	bool no_forkid = ForkIdDisabled(flags);
+	
+    bool no_forkid = ForkIdDisabled(flags);
     fSuccess = checker.CheckECDSASignature(vchSig, vchPubKey, scriptCode, sigversion, no_forkid);
 
     if (!fSuccess && (flags & SCRIPT_VERIFY_NULLFAIL) && vchSig.size())
@@ -1607,7 +1608,7 @@ bool SignatureHashSchnorr(uint256& hash_out, const ScriptExecutionData& execdata
 }
 
 template <class T>
-uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache)
+uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, bool no_forkid, const PrecomputedTransactionData* cache, int forkid)
 {
     assert(nIn < txTo.vin.size());
 

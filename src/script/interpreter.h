@@ -41,6 +41,8 @@ enum
     FORKID_BTG = 79, // Atomic number AU
 };
 
+static const int FORKID_IN_USE = FORKID_BTG;
+
 /** Script verification flags.
  *
  *  All flags are intended to be soft forks: the set of acceptable scripts under
@@ -291,9 +293,9 @@ protected:
 public:
     DeferringSignatureChecker(BaseSignatureChecker& checker) : m_checker(checker) {}
 
-    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, bool no_forkid) const override
     {
-        return m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion);
+        return m_checker.CheckECDSASignature(scriptSig, vchPubKey, scriptCode, sigversion, no_forkid);
     }
 
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, const ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override

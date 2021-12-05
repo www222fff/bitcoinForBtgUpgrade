@@ -11,6 +11,8 @@
 #include <script/signingprovider.h>
 #include <script/standard.h>
 #include <uint256.h>
+#include <validation.h>
+#include <chainparams.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -404,7 +406,7 @@ class DummySignatureChecker final : public BaseSignatureChecker
 {
 public:
     DummySignatureChecker() {}
-    bool CheckSig(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, bool no_forkid) const override { return true; }
+    bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion, bool no_forkid) const override { return true; }
 };
 const DummySignatureChecker DUMMY_CHECKER;
 
@@ -479,6 +481,13 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
     const CTransaction txConst(mtx);
+
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+
     // Sign what we can:
     for (unsigned int i = 0; i < mtx.vin.size(); i++) {
         CTxIn& txin = mtx.vin[i];
@@ -490,10 +499,9 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         const CScript& prevPubKey = coin->second.out.scriptPubKey;
         const CAmount& amount = coin->second.out.nValue;
 
-        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
+        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out, no_forkid);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            bool no_forkid = !(nHashType & SIGHASH_FORKID);
             ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, no_forkid, nHashType), prevPubKey, sigdata, no_forkid);
         }
 

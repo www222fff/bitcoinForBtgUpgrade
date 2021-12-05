@@ -830,6 +830,7 @@ static RPCHelpMan getblockheader()
                     {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "The block hash"},
                     {"verbose", RPCArg::Type::BOOL, /* default */ "true", "true for a json object, false for the hex-encoded data"},
                     {"legacy",  RPCArg::Type::BOOL, /* default */ "false", "indicates if the block should be in legacy format"},
+		},
                 {
                     RPCResult{"for verbose = true",
                         RPCResult::Type::OBJ, "", "",
@@ -865,7 +866,7 @@ static RPCHelpMan getblockheader()
     if (!request.params[1].isNull())
         fVerbose = request.params[1].get_bool();
 		
-	bool legacy_format = false;
+    bool legacy_format = false;
     if (request.params.size() == 3 && request.params[2].get_bool() == true) {
         legacy_format = true;
     }
@@ -1631,7 +1632,7 @@ UniValue finalizeblock(const JSONRPCRequest& request) {
 
     std::string strHash = request.params[0].get_str();
     uint256 hash(uint256S(strHash));
-    CValidationState state;
+    BlockValidationState state;
 
     {
         LOCK(cs_main);
@@ -1648,7 +1649,7 @@ UniValue finalizeblock(const JSONRPCRequest& request) {
     }
 
     if (!state.IsValid()) {
-        throw JSONRPCError(RPC_DATABASE_ERROR, FormatStateMessage(state));
+        throw JSONRPCError(RPC_DATABASE_ERROR, state.ToString());
     }
 
     return NullUniValue;

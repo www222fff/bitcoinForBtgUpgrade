@@ -2357,12 +2357,10 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             cleanSubVer.find("microBitcoin") != std::string::npos ||
             cleanSubVer.find("Bitcoin Gold:0.15.0.2") != std::string::npos ||
             cleanSubVer.find("Bitcoin Gold:0.15.0.1") != std::string::npos) {
-            LogPrint(BCLog::NET, "peer=%d is in client version blacklist; banning\n", pfrom->GetId());
-            connman->PushMessage(pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, strCommand, REJECT_NONSTANDARD,
-                                 strprintf("Bad client version")));
+            LogPrint(BCLog::NET, "peer=%d is in client version blacklist; banning\n", pfrom.GetId());
             LOCK(cs_main);
-            Misbehaving(pfrom->GetId(), 100);
-            return false;
+            Misbehaving(pfrom.GetId(), 100, "banning as client version blacklist");
+            return;
         }
         if (!vRecv.empty()) {
             vRecv >> nStartingHeight;

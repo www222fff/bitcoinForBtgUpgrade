@@ -11,6 +11,7 @@
 #include <crypto/equihash.h>
 #include <primitives/block.h>
 #include <uint256.h>
+#include <streams.h>
 
 #include <algorithm>
 #include <iostream>

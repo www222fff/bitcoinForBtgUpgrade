@@ -10,7 +10,7 @@
 
 #include <compat/endian.h>
 #include <crypto/sha256.h>
-#include <utilstrencodings.h>
+#include <util/strencodings.h>
 
 #include <blake2.h>
 
