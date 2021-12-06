@@ -9,7 +9,8 @@
 #include <policy/policy.h>
 #include <policy/settings.h>
 #include <tinyformat.h>
-
+#include <validation.h>
+#include <chainparams.h>
 #include <numeric>
 
 PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
@@ -84,6 +85,12 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
         }
     }
 
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+
     // Calculate next role for PSBT by grabbing "minimum" PSBTInput next role
     result.next = PSBTRole::EXTRACTOR;
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
@@ -121,7 +128,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
             PSBTInput& input = psbtx.inputs[i];
             Coin newcoin;
 
-            if (!SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, 1, nullptr, true) || !psbtx.GetInputUTXO(newcoin.out, i)) {
+            if (!SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, 1, no_forkid, nullptr, true) || !psbtx.GetInputUTXO(newcoin.out, i)) {
                 success = false;
                 break;
             } else {

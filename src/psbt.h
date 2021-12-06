@@ -570,7 +570,7 @@ std::string PSBTRoleName(PSBTRole role);
 bool PSBTInputSigned(const PSBTInput& input);
 
 /** Signs a PSBTInput, verifying that all provided data matches what is being signed. */
-bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash = SIGHASH_ALL, SignatureData* out_sigdata = nullptr, bool use_dummy = false);
+bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash = SIGHASH_ALL, bool no_forkid = false, SignatureData* out_sigdata = nullptr, bool use_dummy = false);
 
 /** Counts the unsigned inputs of a PSBT. */
 size_t CountPSBTUnsignedInputs(const PartiallySignedTransaction& psbt);
@@ -579,7 +579,7 @@ size_t CountPSBTUnsignedInputs(const PartiallySignedTransaction& psbt);
  *
  * This fills in the redeem_script, witness_script, and hd_keypaths where possible.
  */
-void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index);
+void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, bool no_forkid);
 
 /**
  * Finalizes a PSBT if possible, combining partial signatures.

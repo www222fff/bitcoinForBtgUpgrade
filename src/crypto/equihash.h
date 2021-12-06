@@ -62,7 +62,8 @@ public:
     StepRow(const StepRow<W>& a);
 
     bool IsZero(size_t len);
-    std::string GetHex(size_t len) { return HexStr(hash, hash+len); }
+
+    std::string GetHex(size_t len) { std::vector<unsigned char> hexvec(hash, hash+len); return HexStr(hexvec); }
 
     template<size_t W>
     friend bool HasCollision(StepRow<W>& a, StepRow<W>& b, size_t l);

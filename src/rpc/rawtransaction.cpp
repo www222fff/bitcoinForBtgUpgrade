@@ -1628,6 +1628,12 @@ static RPCHelpMan utxoupdatepsbt()
         view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
     }
 
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+
     // Fill the inputs
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs.at(i);
@@ -1645,12 +1651,12 @@ static RPCHelpMan utxoupdatepsbt()
         // Update script/keypath information using descriptor data.
         // Note that SignPSBTInput does a lot more than just constructing ECDSA signatures
         // we don't actually care about those here, in fact.
-        SignPSBTInput(public_provider, psbtx, i, /* sighash_type */ 1);
+        SignPSBTInput(public_provider, psbtx, i, /* sighash_type */ 1, no_forkid);
     }
 
     // Update script/keypath information using descriptor data.
     for (unsigned int i = 0; i < psbtx.tx->vout.size(); ++i) {
-        UpdatePSBTOutput(public_provider, psbtx, i);
+        UpdatePSBTOutput(public_provider, psbtx, i, no_forkid);
     }
 
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
