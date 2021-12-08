@@ -112,7 +112,7 @@ public:
 static int ConvertAddressFormat(const std::string& addr, const std::map<uint8_t, uint8_t>& ver_map)
 {
     std::vector<unsigned char> addr_data;
-    if (!DecodeBase58Check(addr, addr_data) || ver_map.count(addr_data[0]) == 0) {
+    if (!DecodeBase58Check(addr, addr_data, addr.length()) || ver_map.count(addr_data[0]) == 0) {
         fprintf(stderr, "Invalid input address: %s\n", addr.c_str());
         return EXIT_FAILURE;
     }

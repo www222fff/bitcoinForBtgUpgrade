@@ -180,7 +180,7 @@ public:
     uint32_t nReserved[7];
     uint32_t nTime{0};
     uint32_t nBits{0};
-    uint256 nNonce{0};
+    uint256 nNonce{};
     std::vector<unsigned char> nSolution;
 
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.

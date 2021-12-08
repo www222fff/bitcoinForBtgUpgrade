@@ -474,19 +474,13 @@ bool IsSegWitOutput(const SigningProvider& provider, const CScript& script)
     return false;
 }
 
-bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, std::string>& input_errors)
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, std::string>& input_errors, bool no_forkid)
 {
     bool fHashSingle = ((nHashType & ~SIGHASH_ANYONECANPAY) == SIGHASH_SINGLE);
 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
     const CTransaction txConst(mtx);
-
-    bool no_forkid;
-    {
-        LOCK(cs_main);
-        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
-    }
 
     // Sign what we can:
     for (unsigned int i = 0; i < mtx.vin.size(); i++) {

@@ -818,8 +818,14 @@ static RPCHelpMan signrawtransactionwithkey()
     // Parse the prevtxs array
     ParsePrevouts(request.params[2], &keystore, coins);
 
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
+
     UniValue result(UniValue::VOBJ);
-    SignTransaction(mtx, &keystore, coins, request.params[3], result);
+    SignTransaction(mtx, &keystore, coins, request.params[3], result, no_forkid);
     return result;
 },
     };

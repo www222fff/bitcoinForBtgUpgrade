@@ -24,7 +24,7 @@ class SigningProvider;
  * @param  hashType      The signature hash type
  * @param result         JSON object where signed transaction results accumulate
  */
-void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result);
+void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result, bool no_forkid);
 void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const std::map<COutPoint, Coin>& coins, std::map<int, std::string>& input_errors, UniValue& result);
 
 /**

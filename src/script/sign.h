@@ -172,6 +172,6 @@ bool IsSolvable(const SigningProvider& provider, const CScript& script);
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
 
 /** Sign the CMutableTransaction */
-bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors);
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors, bool no_forkid);
 
 #endif // BITCOIN_SCRIPT_SIGN_H
