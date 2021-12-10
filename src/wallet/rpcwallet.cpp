@@ -37,7 +37,8 @@
 #include <wallet/wallet.h>
 #include <wallet/walletdb.h>
 #include <wallet/walletutil.h>
-
+#include <validation.h>
+#include <chainparams.h>
 #include <stdint.h>
 
 #include <univalue.h>
@@ -416,7 +417,7 @@ UniValue SendMoney(CWallet* const pwallet, const CCoinControl &coin_control, std
     CTransactionRef tx;
     FeeCalculation fee_calc_out;
     bool no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
-    const bool fCreated = pwallet->CreateTransaction(recipients, tx, nFeeRequired, nChangePosRet, no_forkid, error, coin_control, fee_calc_out, true);
+    const bool fCreated = pwallet->CreateTransaction(recipients, tx, nFeeRequired, nChangePosRet, error, coin_control, fee_calc_out, true, no_forkid);
     if (!fCreated) {
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, error.original);
     }
@@ -3324,9 +3325,9 @@ RPCHelpMan signrawtransactionwithwallet()
             "       \"NONE|ANYONECANPAY\"\n"
             "       \"NONE|FORKID\"\n"
             "       \"NONE|FORKID|ANYONECANPAY\"\n"
-            "       \"SINGLE|ANYONECANPAY\""},
+            "       \"SINGLE|ANYONECANPAY\"\n"
             "       \"SINGLE|FORKID\"\n"
-            "       \"SINGLE|FORKID|ANYONECANPAY\"\n"
+            "       \"SINGLE|FORKID|ANYONECANPAY\"\n"},
                 },
                 RPCResult{
                     RPCResult::Type::OBJ, "", "",
@@ -3377,12 +3378,17 @@ RPCHelpMan signrawtransactionwithwallet()
     // Parse the prevtxs array
     ParsePrevouts(request.params[1], nullptr, coins);
 
-    int nHashType = ParseSighashString(request.params[2]);
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+	no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }		
+    int nHashType = ParseSighashString(request.params[2], !no_forkid);
 
     // Script verification errors
     std::map<int, std::string> input_errors;
 
-    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors);
+    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors, no_forkid);
     UniValue result(UniValue::VOBJ);
     SignTransactionResultToJSON(mtx, complete, coins, input_errors, result);
     return result;

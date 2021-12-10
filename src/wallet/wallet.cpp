@@ -32,6 +32,8 @@
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
 #include <wallet/fees.h>
+#include <validation.h>
+#include <chainparams.h>
 
 #include <univalue.h>
 
@@ -2493,7 +2495,7 @@ bool CWallet::SelectCoins(const std::vector<COutput>& vAvailableCoins, const CAm
     return res;
 }
 
-bool CWallet::SignTransaction(CMutableTransaction& tx) const
+bool CWallet::SignTransaction(CMutableTransaction& tx, bool no_forkid) const
 {
     AssertLockHeld(cs_wallet);
 
@@ -2508,16 +2510,16 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
         coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase());
     }
     std::map<int, std::string> input_errors;
-    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors);
+    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors, no_forkid);
 }
 
-bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const
+bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors, bool no_forkid) const
 {
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
         // so we can exit early and return true if that happens
-        if (spk_man->SignTransaction(tx, coins, sighash, input_errors)) {
+        if (spk_man->SignTransaction(tx, coins, sighash, input_errors, no_forkid)) {
             return true;
         }
     }
@@ -2526,7 +2528,7 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint,
     return false;
 }
 
-TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& complete, bool no_forkid, int sighash_type, bool sign, bool bip32derivs, size_t * n_signed) const
+TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& complete, bool& no_forkid, int sighash_type, bool sign, bool bip32derivs, size_t * n_signed) const
 {
     if (n_signed) {
         *n_signed = 0;
@@ -2609,9 +2611,14 @@ bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nC
     // CreateTransaction call and LockCoin calls (when lockUnspents is true).
     LOCK(cs_wallet);
 
+    bool no_forkid;
+    {
+        LOCK(cs_main);
+        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+    }
     CTransactionRef tx_new;
     FeeCalculation fee_calc_out;
-    if (!CreateTransaction(vecSend, tx_new, nFeeRet, nChangePosInOut, no_forkid, error, coinControl, fee_calc_out, false)) {
+    if (!CreateTransaction(vecSend, tx_new, nFeeRet, nChangePosInOut, error, coinControl, fee_calc_out, false, no_forkid)) {
         return false;
     }
 
@@ -3051,7 +3058,12 @@ bool CWallet::CreateTransactionInternal(
             txNew.vin.push_back(CTxIn(coin.outpoint, CScript(), nSequence));
         }
 
-        if (sign && !SignTransaction(txNew)) {
+        bool no_forkid;
+        {
+            LOCK(cs_main);
+            no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+        }
+        if (sign && !SignTransaction(txNew, no_forkid)) {
             error = _("Signing transaction failed");
             return false;
         }
@@ -3101,11 +3113,11 @@ bool CWallet::CreateTransaction(
         CTransactionRef& tx,
         CAmount& nFeeRet,
         int& nChangePosInOut,
-		bool no_forkid,
         bilingual_str& error,
         const CCoinControl& coin_control,
         FeeCalculation& fee_calc_out,
-        bool sign)
+        bool sign,
+	bool no_forkid)
 {
     int nChangePosIn = nChangePosInOut;
     CTransactionRef tx2 = tx;

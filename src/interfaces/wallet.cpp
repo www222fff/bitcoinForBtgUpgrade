@@ -234,7 +234,7 @@ public:
         CTransactionRef tx;
         FeeCalculation fee_calc_out;
         if (!m_wallet->CreateTransaction(recipients, tx, fee, change_pos,
-                no_forkid, fail_reason, coin_control, fee_calc_out, sign)) {
+                fail_reason, coin_control, fee_calc_out, sign, no_forkid)) {
             return {};
         }
         return tx;
@@ -343,14 +343,9 @@ public:
         bool bip32derivs,
         PartiallySignedTransaction& psbtx,
         bool& complete,
-        size_t* n_signed) override
+        size_t* n_signed,
+	bool no_forkid) override
     {
-        bool no_forkid;
-        {
-            LOCK(cs_main);
-            no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
-        }
-
         return m_wallet->FillPSBT(psbtx, complete, no_forkid, sighash_type, sign, bip32derivs, n_signed);
     }
     WalletBalances getBalances() override
