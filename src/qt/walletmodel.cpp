@@ -196,6 +196,7 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         return AmountExceedsBalance;
     }
 
+    bool no_forkid;
     {
         LOCK(cs_main);
         no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
@@ -543,7 +544,12 @@ bool WalletModel::bumpFee(uint256 hash, uint256& new_hash)
     if (create_psbt) {
         PartiallySignedTransaction psbtx(mtx);
         bool complete = false;
-        const TransactionError err = wallet().fillPSBT(SIGHASH_ALL, false /* sign */, true /* bip32derivs */, psbtx, complete, nullptr);
+	bool no_forkid;
+        {
+            LOCK(cs_main);
+            no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
+        }
+        const TransactionError err = wallet().fillPSBT(SIGHASH_ALL, false /* sign */, true /* bip32derivs */, psbtx, complete, nullptr, no_forkid);
         if (err != TransactionError::OK || complete) {
             QMessageBox::critical(nullptr, tr("Fee bump error"), tr("Can't draft transaction."));
             return false;

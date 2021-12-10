@@ -605,10 +605,10 @@ bgoldd_CXXFLAGS = $(bgoldd_bin_cxxflags)
 bgoldd_LDFLAGS = $(bgoldd_bin_ldflags)
 bgoldd_LDADD = $(LIBBITCOIN_SERVER) $(bgoldd_bin_ldadd)
 
-bgoldd_node_SOURCES = $(bitcoin_daemon_sources)
-bgoldd_node_CPPFLAGS = $(bitcoin_bin_cppflags)
-bgoldd_node_CXXFLAGS = $(bitcoin_bin_cxxflags)
-bgoldd_node_LDFLAGS = $(bitcoin_bin_ldflags)
+bgoldd_node_SOURCES = $(bgoldd_daemon_sources)
+bgoldd_node_CPPFLAGS = $(bgoldd_bin_cppflags)
+bgoldd_node_CXXFLAGS = $(bgoldd_bin_cxxflags)
+bgoldd_node_LDFLAGS = $(bgoldd_bin_ldflags)
 bgoldd_node_LDADD = $(LIBBITCOIN_SERVER) $(bgoldd_bin_ldadd)
 
 # bitcoin-cli binary #
@@ -657,10 +657,10 @@ bitcoin_tx_LDADD += $(BOOST_LIBS)
 
 # bitcoin-wallet binary #
 bitcoin_wallet_SOURCES = bitcoin-wallet.cpp
-bitcoin_wallet_CPPFLAGS = $(bitcoin_bin_cppflags)
-bitcoin_wallet_CXXFLAGS = $(bitcoin_bin_cxxflags)
-bitcoin_wallet_LDFLAGS = $(bitcoin_bin_ldflags)
-bitcoin_wallet_LDADD = $(LIBBITCOIN_WALLET_TOOL) $(bitcoin_bin_ldadd)
+bitcoin_wallet_CPPFLAGS = $(bgoldd_bin_cppflags)
+bitcoin_wallet_CXXFLAGS = $(bgoldd_bin_cxxflags)
+bitcoin_wallet_LDFLAGS = $(bgoldd_bin_ldflags)
+bitcoin_wallet_LDADD = $(LIBBITCOIN_WALLET_TOOL) $(bgoldd_bin_ldadd)
 
 if TARGET_WINDOWS
 bitcoin_wallet_SOURCES += bitcoin-wallet-res.rc
