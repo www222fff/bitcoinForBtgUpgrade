@@ -96,9 +96,9 @@ if BUILD_BITCOIN_TX
   bin_PROGRAMS += bitcoin-tx
 endif
 if ENABLE_WALLET
-if BUILD_BITCOIN_WALLET
-  bin_PROGRAMS += bitcoin-wallet
-endif
+#if BUILD_BITCOIN_WALLET
+#  bin_PROGRAMS += bitcoin-wallet
+#endif
 endif
 
 .PHONY: FORCE check-symbols check-security
