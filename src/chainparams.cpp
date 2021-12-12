@@ -409,6 +409,11 @@ public:
         consensus.BIP34Hash = uint256{};
         consensus.BIP65Height = 1;
         consensus.BIP66Height = 1;
+	consensus.BTGHeight = 491407; // Around 10/25/2017 12:00 UTC
+        consensus.BTGPremineWindow = 8000;
+        consensus.BTGZawyLWMAHeight = 536200; // Around 07/01/2018
+        consensus.BTGEquihashForkHeight = 536200; // Around 07/01/2018
+        consensus.BTGPremineEnforceWhitelist = true;
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 1;
         consensus.nPowTargetTimespanLegacy = 14 * 24 * 60 * 60; // two weeks
@@ -436,11 +441,11 @@ public:
         uint256 hash = h.GetHash();
         memcpy(pchMessageStart, hash.begin(), 4);
 
-        nDefaultPort = 38333;
+        nDefaultPort = 38338;
         nPruneAfterHeight = 1000;
 
         genesis = CreateGenesisBlock(1598918400, 52613770, 0x1e0377ae, 1, 50 * COIN);
-        consensus.hashGenesisBlock = genesis.GetHash();
+        consensus.hashGenesisBlock = genesis.GetHash(consensus);
         assert(consensus.hashGenesisBlock == uint256S("0x00000008819873e925422c1ff0f99f7cc9bbb232af63a077a480a3633bee1ef6"));
         assert(genesis.hashMerkleRoot == uint256S("0x4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"));
 
