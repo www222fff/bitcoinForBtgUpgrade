@@ -271,7 +271,7 @@ class CompactBlocksTest(BitcoinTestFramework):
         block_hash = int(node.generate(1)[0], 16)
 
         # Store the raw block in our internal format.
-        block = FromHex(CBlock(), node.getblock("%064x" % block_hash, False))
+        block = FromHex(CBlock(), node.getblock("%02x" % block_hash, False), legacy=False)
         for tx in block.vtx:
             tx.calc_sha256()
         block.rehash()
@@ -564,7 +564,7 @@ class CompactBlocksTest(BitcoinTestFramework):
         current_height = chain_height
         while (current_height >= chain_height - MAX_GETBLOCKTXN_DEPTH):
             block_hash = node.getblockhash(current_height)
-            block = FromHex(CBlock(), node.getblock(block_hash, False))
+            block = FromHex(CBlock(), node.getblock(block_hash, False), legacy=False)
 
             msg = msg_getblocktxn()
             msg.block_txn_request = BlockTransactionsRequest(int(block_hash, 16), [])
@@ -669,7 +669,7 @@ class CompactBlocksTest(BitcoinTestFramework):
 
         # ToHex() won't serialize with witness, but this block has no witnesses
         # anyway. TODO: repeat this test with witness tx's to a segwit node.
-        node.submitblock(ToHex(block))
+        node.submitblock(ToHex(block, legacy=False))
 
         for l in listeners:
             l.wait_until(lambda: "cmpctblock" in l.last_message, timeout=30)

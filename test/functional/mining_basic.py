@@ -36,7 +36,7 @@ def assert_template(node, block, expect, rehash=True):
     if rehash:
         block.hashMerkleRoot = block.calc_merkle_root()
     rsp = node.getblocktemplate(template_request={
-        'data': block.serialize().hex(),
+        'data': block.serialize(legacy=False).hex(),
         'mode': 'proposal',
         'rules': ['segwit'],
     })
@@ -107,6 +107,7 @@ class MiningTest(BitcoinTestFramework):
         block.hashPrevBlock = int(tmpl["previousblockhash"], 16)
         block.nTime = tmpl["curtime"]
         block.nBits = int(tmpl["bits"], 16)
+        block.nHeight = int(tmpl["height"])
         block.nNonce = 0
         block.vtx = [coinbase_tx]
 
@@ -117,7 +118,7 @@ class MiningTest(BitcoinTestFramework):
         assert_template(node, block, None)
 
         self.log.info("submitblock: Test block decode failure")
-        assert_raises_rpc_error(-22, "Block decode failed", node.submitblock, block.serialize()[:-15].hex())
+        assert_raises_rpc_error(-22, "Block decode failed", node.submitblock, block.serialize(legacy=False)[:-15].hex())
 
         self.log.info("getblocktemplate: Test bad input hash for coinbase transaction")
         bad_block = copy.deepcopy(block)
@@ -126,11 +127,11 @@ class MiningTest(BitcoinTestFramework):
         assert_template(node, bad_block, 'bad-cb-missing')
 
         self.log.info("submitblock: Test invalid coinbase transaction")
-        assert_raises_rpc_error(-22, "Block does not start with a coinbase", node.submitblock, bad_block.serialize().hex())
+        assert_raises_rpc_error(-22, "Block does not start with a coinbase", node.submitblock, bad_block.serialize(legacy=False).hex())
 
         self.log.info("getblocktemplate: Test truncated final transaction")
         assert_raises_rpc_error(-22, "Block decode failed", node.getblocktemplate, {
-            'data': block.serialize()[:-1].hex(),
+            'data': block.serialize(legacy=False)[:-1].hex(),
             'mode': 'proposal',
             'rules': ['segwit'],
         })
@@ -159,7 +160,7 @@ class MiningTest(BitcoinTestFramework):
 
         self.log.info("getblocktemplate: Test bad tx count")
         # The tx count is immediately after the block header
-        bad_block_sn = bytearray(block.serialize())
+        bad_block_sn = bytearray(block.serialize(legacy=False))
         assert_equal(bad_block_sn[BLOCK_HEADER_SIZE], 1)
         bad_block_sn[BLOCK_HEADER_SIZE] += 1
         assert_raises_rpc_error(-22, "Block decode failed", node.getblocktemplate, {

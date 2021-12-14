@@ -60,9 +60,9 @@ class CBrokenBlock(CBlock):
         self.vtx = copy.deepcopy(base_block.vtx)
         self.hashMerkleRoot = self.calc_merkle_root()
 
-    def serialize(self, with_witness=False):
+    def serialize(self, with_witness=False, legacy=True):
         r = b""
-        r += super(CBlock, self).serialize()
+        r += super(CBlock, self).serialize(legacy=legacy)
         r += struct.pack("<BQ", 255, len(self.vtx))
         for tx in self.vtx:
             if with_witness:

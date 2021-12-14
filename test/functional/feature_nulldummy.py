@@ -121,7 +121,7 @@ class NULLDUMMYTest(BitcoinTestFramework):
         witness and add_witness_commitment(block)
         block.rehash()
         block.solve()
-        assert_equal(None if accept else 'block-validation-failed', node.submitblock(block.serialize().hex()))
+        assert_equal(None if accept else 'block-validation-failed', node.submitblock(block.serialize(legacy=False).hex()))
         if (accept):
             assert_equal(node.getbestblockhash(), block.hash)
             self.lastblockhash = block.hash

@@ -325,7 +325,7 @@ class BIP68Test(BitcoinTestFramework):
             block.rehash()
             block.solve()
             tip = block.sha256
-            assert_equal(None if i == 1 else 'inconclusive', self.nodes[0].submitblock(ToHex(block)))
+            assert_equal(None if i == 1 else 'inconclusive', self.nodes[0].submitblock(ToHex(block, legacy=False)))
             tmpl = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
             tmpl['previousblockhash'] = '%x' % tip
             tmpl['transactions'] = []
@@ -383,7 +383,7 @@ class BIP68Test(BitcoinTestFramework):
         add_witness_commitment(block)
         block.solve()
 
-        assert_equal(None, self.nodes[0].submitblock(block.serialize().hex()))
+        assert_equal(None, self.nodes[0].submitblock(block.serialize(legacy=False).hex()))
         assert_equal(self.nodes[0].getbestblockhash(), block.hash)
 
     def activateCSV(self):

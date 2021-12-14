@@ -175,8 +175,8 @@ class SegWitTest(BitcoinTestFramework):
         self.fail_accept(self.nodes[0], "non-mandatory-script-verify-flag (Witness program was passed an empty witness)", p2sh_ids[NODE_0][P2WSH][0], sign=False, redeem_script=witness_script(True, self.pubkey[0]))
 
         self.log.info("Verify block and transaction serialization rpcs return differing serializations depending on rpc serialization flag")
-        assert self.nodes[2].getblock(blockhash, False) != self.nodes[0].getblock(blockhash, False)
-        assert self.nodes[1].getblock(blockhash, False) == self.nodes[2].getblock(blockhash, False)
+        assert self.nodes[2].getblock(blockhash, False, True) != self.nodes[0].getblock(blockhash, False, True)
+        assert self.nodes[1].getblock(blockhash, False, True) == self.nodes[2].getblock(blockhash, False, True)
 
         for tx_id in segwit_tx_list:
             tx = FromHex(CTransaction(), self.nodes[2].gettransaction(tx_id)["hex"])

@@ -573,7 +573,7 @@ def submit_block_with_tx(node, tx):
     block.hashMerkleRoot = block.calc_merkle_root()
     add_witness_commitment(block)
     block.solve()
-    node.submitblock(block.serialize().hex())
+    node.submitblock(block.serialize(legacy=False).hex())
     return block
 
 
