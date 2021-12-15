@@ -64,7 +64,7 @@ static CMutableTransaction TestSimpleSpend(const CTransaction& from, uint32_t in
     std::map<COutPoint, Coin> coins;
     coins[mtx.vin[0].prevout].out = from.vout[index];
     std::map<int, std::string> input_errors;
-    BOOST_CHECK(SignTransaction(mtx, &keystore, coins, SIGHASH_ALL, input_errors));
+    BOOST_CHECK(SignTransaction(mtx, &keystore, coins, SIGHASH_ALL, input_errors, true));
     return mtx;
 }
 
@@ -526,7 +526,7 @@ public:
         CCoinControl dummy;
         FeeCalculation fee_calc_out;
         {
-            BOOST_CHECK(wallet->CreateTransaction({recipient}, tx, fee, changePos, true /* no_forkid */, error, dummy, fee_calc_out));
+            BOOST_CHECK(wallet->CreateTransaction({recipient}, tx, fee, changePos, error, dummy, fee_calc_out, true));
         }
         wallet->CommitTransaction(tx, {}, {});
         CMutableTransaction blocktx;

@@ -1405,17 +1405,17 @@ BOOST_AUTO_TEST_CASE(script_combineSigs)
 
     // A couple of partially-signed versions:
     std::vector<unsigned char> sig1;
-    uint256 hash1 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_ALL | SIGHASH_FORKID, 0, SigVersion::BASE);
+    uint256 hash1 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_ALL | SIGHASH_FORKID, 0, SigVersion::BASE, false);
     BOOST_CHECK(keys[0].Sign(hash1, sig1));
     sig1.push_back(SIGHASH_ALL | SIGHASH_FORKID);
     std::vector<unsigned char> sig2;
-    uint256 hash2 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_ALL | SIGHASH_FORKID, 0, SigVersion::BASE);
+    uint256 hash2 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_NONE | SIGHASH_FORKID, 0, SigVersion::BASE, false);
     BOOST_CHECK(keys[1].Sign(hash2, sig2));
-    sig2.push_back(SIGHASH_ALL | SIGHASH_FORKID);
+    sig2.push_back(SIGHASH_NONE | SIGHASH_FORKID);
     std::vector<unsigned char> sig3;
-    uint256 hash3 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_ALL | SIGHASH_FORKID, 0, SigVersion::BASE);
+    uint256 hash3 = SignatureHash(scriptPubKey, txTo, 0, SIGHASH_SINGLE | SIGHASH_FORKID, 0, SigVersion::BASE, false);
     BOOST_CHECK(keys[2].Sign(hash3, sig3));
-    sig3.push_back(SIGHASH_ALL | SIGHASH_FORKID);
+    sig3.push_back(SIGHASH_SINGLE | SIGHASH_FORKID);
 
     // Not fussy about order (or even existence) of placeholders or signatures:
     CScript partial1a = CScript() << OP_0 << sig1 << OP_0;

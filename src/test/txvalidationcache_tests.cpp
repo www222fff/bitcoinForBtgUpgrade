@@ -345,7 +345,7 @@ BOOST_FIXTURE_TEST_CASE(checkinputs_test, TestChain100Setup)
         // Sign
         for (int i=0; i<2; ++i) {
             SignatureData sigdata;
-            BOOST_CHECK(ProduceSignature(keystore, MutableTransactionSignatureCreator(&tx, i, 11*CENT, true£¬SIGHASH_ALL), spend_tx.vout[i].scriptPubKey, sigdata, true));
+            BOOST_CHECK(ProduceSignature(keystore, MutableTransactionSignatureCreator(&tx, i, 11*CENT, true, SIGHASH_ALL), spend_tx.vout[i].scriptPubKey, sigdata, true));
             UpdateInput(tx.vin[i], sigdata);
         }
 

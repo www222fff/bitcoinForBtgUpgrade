@@ -144,7 +144,7 @@ void sanity_check_chainparams(const ArgsManager& args, std::string chainName)
     BOOST_CHECK_EQUAL(consensus.hashGenesisBlock, chainParams->GenesisBlock().GetHash());
 
     // target timespan is an even multiple of spacing
-    BOOST_CHECK_EQUAL(consensus.nPowTargetTimespan % consensus.nPowTargetSpacing, 0);
+    BOOST_CHECK_EQUAL(consensus.nPowTargetTimespanLegacy % consensus.nPowTargetSpacing, 0);
 
     // genesis nBits is positive, doesn't overflow and is lower than powLimit
     arith_uint256 pow_compact;
@@ -154,10 +154,10 @@ void sanity_check_chainparams(const ArgsManager& args, std::string chainName)
     BOOST_CHECK(!over);
     BOOST_CHECK(UintToArith256(consensus.powLimit) >= pow_compact);
 
-    // check max target * 4*nPowTargetTimespan doesn't overflow -- see pow.cpp:CalculateNextWorkRequired()
+    // check max target * 4*nPowTargetTimespanLegacy doesn't overflow -- see pow.cpp:CalculateNextWorkRequired()
     if (!consensus.fPowNoRetargeting) {
         arith_uint256 targ_max("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF");
-        targ_max /= consensus.nPowTargetTimespan*4;
+        targ_max /= consensus.nPowTargetTimespanLegacy*4;
         BOOST_CHECK(UintToArith256(consensus.powLimit) < targ_max);
     }
 }
@@ -185,7 +185,7 @@ BOOST_AUTO_TEST_CASE(ChainParams_SIGNET_sanity)
 
 BOOST_AUTO_TEST_CASE(LwmaCalculateNextWorkRequired_test)
 {
-    const auto chainParams = CreateChainParams(CBaseChainParams::MAIN);
+    const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     std::vector<CBlockIndex> blocks(50);
     for (int i = 0; i < 50; i++) {
         blocks[i].pprev = i ? &blocks[i - 1] : nullptr;
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(LwmaCalculateNextWorkRequired_test)
 
 BOOST_AUTO_TEST_CASE(ReduceDifficultyBy_test)
 {
-    const auto chain_params = CreateChainParams(CBaseChainParams::MAIN);
+    const auto chain_params = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     const auto& consensus = chain_params->GetConsensus();
     CBlockIndex last_block;
     last_block.nHeight = consensus.BTGEquihashForkHeight - 1;

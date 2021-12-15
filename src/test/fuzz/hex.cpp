@@ -40,5 +40,5 @@ void test_one_input(const std::vector<uint8_t>& buffer)
     CBlockHeader block_header;
     (void)DecodeHexBlockHeader(block_header, random_hex_string);
     CBlock block;
-    (void)DecodeHexBlk(block, random_hex_string);
+    (void)DecodeHexBlk(block, random_hex_string, false);
 }
