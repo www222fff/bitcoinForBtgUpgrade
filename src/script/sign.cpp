@@ -11,8 +11,6 @@
 #include <script/signingprovider.h>
 #include <script/standard.h>
 #include <uint256.h>
-#include <validation.h>
-#include <chainparams.h>
 
 typedef std::vector<unsigned char> valtype;
 
