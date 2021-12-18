@@ -484,7 +484,6 @@ public:
         consensus.CSVHeight = 432; // CSV activated on regtest (Used in rpc activation tests)
         consensus.SegwitHeight = 0; // SEGWIT is always activated on regtest unless overridden
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.BTGHeight = 2000;
         consensus.BTGZawyLWMAHeight = -1; // Activated on regtest
         consensus.BTGEquihashForkHeight = 2001;

@@ -153,7 +153,7 @@ enum EhSolverCancelCheck
 
 class EhSolverCancelledException : public std::exception
 {
-    virtual const char* what() const throw() {
+    virtual const char* what() const throw() override {
         return "Equihash solver was cancelled";
     }
 };

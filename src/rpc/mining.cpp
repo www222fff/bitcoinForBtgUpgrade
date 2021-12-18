@@ -648,7 +648,9 @@ static RPCHelpMan getblocktemplate()
                         {RPCResult::Type::NUM_TIME, "curtime", "current timestamp in " + UNIX_EPOCH_TIME},
                         {RPCResult::Type::STR, "bits", "compressed target of next block"},
                         {RPCResult::Type::NUM, "height", "The height of the next block"},
-                        {RPCResult::Type::STR, "default_witness_commitment", /* optional */ true, "a valid witness commitment for the unmodified block template"}
+                        {RPCResult::Type::STR, "default_witness_commitment", /* optional */ true, "a valid witness commitment for the unmodified block template"},
+                        {RPCResult::Type::NUM, "equihashn", "Equihash N"},
+                        {RPCResult::Type::NUM, "equihashk", "Equihash K"}
                     }},
                 RPCExamples{
                     HelpExampleCli("getblocktemplate", "'{\"rules\": [\"segwit\"]}'")
@@ -995,14 +997,14 @@ protected:
 
 static RPCHelpMan submitblock()
 {
-    // We allow 2 arguments for compliance with BIP22. Argument 2 is ignored.
+    // We allow 3 arguments for compliance with BIP22. Argument 2 is ignored.
     return RPCHelpMan{"submitblock",
                 "\nAttempts to submit new block to network.\n"
                 "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n",
                 {
                     {"hexdata", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hex-encoded block data to submit"},
                     {"dummy", RPCArg::Type::STR, /* default */ "ignored", "dummy value, for compatibility with BIP22. This value is ignored."},
-					{"legacy", RPCArg::Type::STR, /* default */ "false", "dummy value, indicates if the block is in legacy foramt."}
+		    {"legacy", RPCArg::Type::STR, /* default */ "false", "dummy value, indicates if the block is in legacy foramt."}
                 },
                 RPCResult{RPCResult::Type::NONE, "", "Returns JSON Null when valid, a string according to BIP22 otherwise"},
                 RPCExamples{
@@ -1063,22 +1065,26 @@ static RPCHelpMan submitblock()
     };
 }
 
-static UniValue getblocksubsidy(const JSONRPCRequest& request)
+static RPCHelpMan getblocksubsidy()
 {
-    if (request.fHelp || request.params.size() > 1)
-        throw std::runtime_error(
-            "getblocksubsidy height\n"
-            "\nReturns block subsidy reward of block at index provided.\n"
-            "\nArguments:\n"
-            "1. height          (numeric, optional) The block height. If not provided, defaults to the current height of the chain.\n"
-            "\nResult:\n"
-            "{\n"
-            "\"miner\": n,    (numeric) The mining reward amount in satoshis.\n"
-            "\"founders\": f, (numeric) Always 0, for Zcash mining compatibility.\n"
-            "}\n"
-            "\nExamples:\n" +
-            HelpExampleCli("getblocksubsidy", "1000") + HelpExampleRpc("getblocksubsidy", "1000"));
-
+    return RPCHelpMan{"getblocksubsidy",
+                "\nReturns block subsidy reward of block at index provided.\n",
+                {
+                    {"height", RPCArg::Type::NUM, /* default */ "-1", "The block height. If not provided, defaults to the current height of the chain."},
+                },
+		RPCResult{
+                    RPCResult::Type::OBJ, "", "",
+                    {
+                        {RPCResult::Type::NUM, "miner",  "The mining reward amount in satoshis"},
+                        {RPCResult::Type::NUM, "founders", "Always 0, for Zcash mining compatibility."},
+                    }
+		},
+                RPCExamples{
+                    HelpExampleCli("getblocksubsidy", "height")
+                  + HelpExampleRpc("getblocksubsidy", "height")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
     RPCTypeCheck(request.params, {UniValue::VNUM});
 
     LOCK(cs_main);
@@ -1094,6 +1100,8 @@ static UniValue getblocksubsidy(const JSONRPCRequest& request)
     result.pushKV("founders", 0);
 
     return result;
+},
+    };
 }
 
 static RPCHelpMan submitheader()
@@ -1329,9 +1337,9 @@ static const CRPCCommand commands[] =
     { "mining",             "getmininginfo",          &getmininginfo,          {} },
     { "mining",             "prioritisetransaction",  &prioritisetransaction,  {"txid","dummy","fee_delta"} },
     { "mining",             "getblocktemplate",       &getblocktemplate,       {"template_request"} },
-    { "mining",             "submitblock",            &submitblock,            {"hexdata","dummy"} },
+    { "mining",             "submitblock",            &submitblock,            {"hexdata","dummy","legacy"} },
     { "mining",             "submitheader",           &submitheader,           {"hexdata"} },
-	{ "mining",             "getblocksubsidy",        &getblocksubsidy,        {"height"} },
+    { "mining",             "getblocksubsidy",        &getblocksubsidy,        {"height"} },
 
 
     { "generating",         "generatetoaddress",      &generatetoaddress,      {"nblocks","address","maxtries"} },

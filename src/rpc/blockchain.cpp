@@ -801,25 +801,29 @@ static RPCHelpMan getblockhash()
     };
 }
 
-UniValue getfinalizedblockhash(const JSONRPCRequest &request) {
-    if (request.fHelp || request.params.size() != 0)
-        throw std::runtime_error(
-            "getfinalizedblockhash\n"
-            "\nReturns the hash of the currently finalized block.\n"
-            "\nResult:\n"
-            "\"hex\"      (string) the block hash hex encoded\n"
-            "\nExamples:\n"
-            + HelpExampleCli("getfinalizedblockhash", "")
-            + HelpExampleRpc("getfinalizedblockhash", "")
-        );
-
+static RPCHelpMan getfinalizedblockhash() 
+{
+    return RPCHelpMan{"getfinalizedblockhash",
+                "\nReturns hash of the currently finalized block.\n",
+                {},
+                RPCResult{
+                    RPCResult::Type::STR_HEX, "", "The block hash"},
+                RPCExamples{
+                    HelpExampleCli("getfinalizedblockhash", "")
+                    + HelpExampleRpc("getfinalizedblockhash", "")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
     LOCK(cs_main);
     const CBlockIndex *blockIndexFinalized = GetFinalizedBlock();
     if (blockIndexFinalized) {
         return blockIndexFinalized->GetBlockHash().GetHex();
     }
     return UniValue(UniValue::VSTR);
+},
+    };
 }
+
 
 static RPCHelpMan getblockheader()
 {
@@ -1614,22 +1618,23 @@ static RPCHelpMan preciousblock()
     };
 }
 
-UniValue finalizeblock(const JSONRPCRequest& request) {
-    if (request.fHelp || request.params.size() != 1)
-        throw std::runtime_error(
-            "finalizeblock \"blockhash\"\n"
-            "\nTreats a block as final. It cannot be reorged. Any chain\n"
-            "that does not contain this block is invalid. Used on a less\n"
-            "work chain, it can effectively PUTS YOU OUT OF CONSENSUS.\n"
-            "USE WITH CAUTION!\n"
-            "\nArguments:\n"
-            "1. \"blockhash\"   (string, required) the hash of the block to mark as finalized\n"
-            "\nResult:\n"
-            "\nExamples:\n"
-            + HelpExampleCli("finalizeblock", "\"blockhash\"")
+static RPCHelpMan finalizeblock()
+{
+    return RPCHelpMan{"finalizeblock",
+                "\nTreats a block as final. It cannot be reorged. Any chain\n"
+                "that does not contain this block is invalid. Used on a less\n"
+                "work chain, it can effectively PUTS YOU OUT OF CONSENSUS.\n"
+                "USE WITH CAUTION!\n",
+                {
+                    {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hash of the block to mark as finalized"},
+                },
+                RPCResult{RPCResult::Type::NONE, "", ""},
+                RPCExamples{
+                    HelpExampleCli("finalizeblock", "\"blockhash\"")
             + HelpExampleRpc("finalizeblock", "\"blockhash\"")
-        );
-
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
     std::string strHash = request.params[0].get_str();
     uint256 hash(uint256S(strHash));
     BlockValidationState state;
@@ -1653,6 +1658,8 @@ UniValue finalizeblock(const JSONRPCRequest& request) {
     }
 
     return NullUniValue;
+},
+    };
 }
 
 
