@@ -14,7 +14,7 @@
 
 #include <boost/test/unit_test.hpp>
 
-BOOST_AUTO_TEST_SUITE(blockfilter_tests)
+BOOST_FIXTURE_TEST_SUITE(blockfilter_tests, RegTestingSetup)
 
 BOOST_AUTO_TEST_CASE(gcsfilter_test)
 {
@@ -153,7 +153,7 @@ BOOST_AUTO_TEST_CASE(blockfilters_json_test)
         BOOST_CHECK(ParseHashStr(test[pos++].get_str(), block_hash));
 
         CBlock block;
-        BOOST_REQUIRE(DecodeHexBlk(block, test[pos++].get_str(), false));
+        BOOST_REQUIRE(DecodeHexBlk(block, test[pos++].get_str(), true));
 
         CBlockUndo block_undo;
         block_undo.vtxundo.emplace_back();
