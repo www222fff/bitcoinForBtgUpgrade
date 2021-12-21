@@ -761,7 +761,7 @@ static RPCHelpMan signrawtransactionwithkey()
             "       \"NONE|FORKID\"\n"
             "       \"NONE|FORKID|ANYONECANPAY\"\n"
             "       \"SINGLE|ANYONECANPAY\"\n"
-			"       \"SINGLE|FORKID\"\n"
+	    "       \"SINGLE|FORKID\"\n"
             "       \"SINGLE|FORKID|ANYONECANPAY\"\n"
                     },
                 },
@@ -823,7 +823,7 @@ static RPCHelpMan signrawtransactionwithkey()
         LOCK(cs_main);
         no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
     }
-
+    
     UniValue result(UniValue::VOBJ);
     SignTransaction(mtx, &keystore, coins, request.params[3], result, no_forkid);
     return result;

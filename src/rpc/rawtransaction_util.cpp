@@ -277,8 +277,7 @@ void ParsePrevouts(const UniValue& prevTxsUnival, FillableSigningProvider* keyst
 
 void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result, bool no_forkid)
 {
-    int nHashType = ParseSighashString(hashType);
-
+    int nHashType = ParseSighashString(hashType, !no_forkid);
     // Script verification errors
     std::map<int, std::string> input_errors;
 
