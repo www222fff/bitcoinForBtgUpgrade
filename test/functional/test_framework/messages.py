@@ -628,7 +628,7 @@ class CTransaction:
 
 class CBlockHeader(object):
     __slots__ = ("hash", "hashMerkleRoot", "hashPrevBlock", "nBits", "nNonce",
-                 "nTime", "nVersion", "sha256")
+                 "nTime", "nVersion", "sha256", "nHeight", "nReserved", "nSolution")
 
     def __init__(self, header=None):
         if header is None:
@@ -730,7 +730,10 @@ class CBlockHeader(object):
                time.ctime(self.nTime), self.nBits, self.nNonce)
 
 BLOCK_HEADER_SIZE = len(CBlockHeader().serialize())
-assert_equal(BLOCK_HEADER_SIZE, 141)
+assert_equal(BLOCK_HEADER_SIZE, 80)
+
+BLOCK_HEADER_SIZE_BTG = len(CBlockHeader().serialize(legacy=False))
+assert_equal(BLOCK_HEADER_SIZE_BTG, 141)
 
 class CBlock(CBlockHeader):
     __slots__ = ("vtx",)
@@ -1696,7 +1699,7 @@ class msg_no_witness_blocktxn(msg_blocktxn):
     __slots__ = ()
 
     def serialize(self):
-        return self.block_transactions.serialize(with_witness=False, legacy=False))
+        return self.block_transactions.serialize(with_witness=False)
 
 
 class msg_getcfilters:
