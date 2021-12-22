@@ -285,7 +285,7 @@ BASE_SCRIPTS = [
     'feature_help.py',
     'feature_shutdown.py',
     'p2p_ibd_txrelay.py',
-	'feature_btg_timelock.py',
+    'feature_btg_timelock.py',
     'feature_btg_hardfork.py',
     'feature_btg_finalize_block.py',
     # Don't append tests at the end to avoid merge conflicts
