@@ -133,7 +133,7 @@ class ZMQTest (BitcoinTestFramework):
 
             # Should receive the generated raw block.
             block = rawblock.receive()
-			assert_equal(genhashes[x], blockhashstr(block))
+            assert_equal(genhashes[x], blockhashstr(block))
 
             # Should receive the generated block hash.
             hash = hashblock.receive().hex()

@@ -729,11 +729,8 @@ class CBlockHeader(object):
             % (self.nVersion, self.hashPrevBlock, self.hashMerkleRoot, self.nHeight,
                time.ctime(self.nTime), self.nBits, self.nNonce)
 
-BLOCK_HEADER_SIZE = len(CBlockHeader().serialize())
-assert_equal(BLOCK_HEADER_SIZE, 80)
-
-BLOCK_HEADER_SIZE_BTG = len(CBlockHeader().serialize(legacy=False))
-assert_equal(BLOCK_HEADER_SIZE_BTG, 141)
+BLOCK_HEADER_SIZE = len(CBlockHeader().serialize(legacy=False))
+assert_equal(BLOCK_HEADER_SIZE, 141)
 
 class CBlock(CBlockHeader):
     __slots__ = ("vtx",)
