@@ -111,6 +111,15 @@ static RPCHelpMan getnetworkhashps()
 
 static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& max_tries, unsigned int& extra_nonce, uint256& block_hash)
 {
+    static const int nInnerLoopBitcoinMask = 0x1FFFF;
+    static const int nInnerLoopBitcoinCount = 0x10000;
+    static const int nInnerLoopEquihashMask = 0xFFFF;
+    static const int nInnerLoopEquihashCount = 0xFFFF;
+    int nInnerLoopCount;
+    const CChainParams& params = Params();
+    unsigned int n;
+    unsigned int k;
+
     block_hash.SetNull();
 
     {
@@ -120,16 +129,62 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
     CChainParams chainparams(Params());
 
-    while (max_tries > 0 && (uint32_t)block.nNonce.GetUint64(0) < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, false, chainparams.GetConsensus()) && !ShutdownRequested()) {
-	block.nNonce = ArithToUint256(UintToArith256(block.nNonce) + 1);
-        --max_tries;
+    if (block.nHeight < (uint32_t)params.GetConsensus().BTGHeight) {
+        // Solve sha256d.
+        nInnerLoopCount = nInnerLoopBitcoinCount;
+        while (max_tries > 0 && (((int)block.nNonce.GetUint64(0) & nInnerLoopBitcoinMask) < nInnerLoopCount) &&
+               !CheckProofOfWork(block.GetHash(), block.nBits, false, Params().GetConsensus())) {
+            block.nNonce = ArithToUint256(UintToArith256(block.nNonce) + 1);
+            --max_tries;
+        }
+    } else {
+        // Solve Equihash.
+        nInnerLoopCount = nInnerLoopEquihashCount;
+        n = params.EquihashN(block.nHeight);
+        k = params.EquihashK(block.nHeight);
+        blake2b_state eh_state;
+        EhInitialiseState(n, k, eh_state, params.EquihashUseBTGSalt(block.nHeight));
+        // I = the block header minus nonce and solution.
+        CEquihashInput I{block};
+        CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+        ss << I;
+
+        // H(I||...
+        blake2b_update(&eh_state, (unsigned char*)&ss[0], ss.size());
+
+        while (max_tries> 0 &&
+              ((int)block.nNonce.GetUint64(0) & nInnerLoopEquihashMask) < nInnerLoopCount) {
+             // Yes, there is a chance every nonce could fail to satisfy the -regtest
+             // target -- 1 in 2^(2^256). That ain't gonna happen
+             block.nNonce = ArithToUint256(UintToArith256(block.nNonce) + 1);
+             // H(I||V||...
+             blake2b_state curr_state;
+             curr_state = eh_state;
+             blake2b_update(&curr_state, block.nNonce.begin(), block.nNonce.size());
+             // (x_1, x_2, ...) = A(I, V, n, k)
+	     CBlock *pblock = &block;
+             std::function<bool(std::vector<unsigned char>)> validBlock =
+                     [&pblock](std::vector<unsigned char> soln) {
+                 pblock->nSolution = soln;
+                 // TODO(h4x3rotab): Add metrics counter like Zcash? `solutionTargetChecks.increment();`
+                 // TODO(h4x3rotab): Maybe switch to EhBasicSolve and better deal with `nMaxTries`?
+                 return CheckProofOfWork(pblock->GetHash(), pblock->nBits, true, Params().GetConsensus());
+             };
+             bool found = EhBasicSolveUncancellable(n, k, curr_state, validBlock);
+             --max_tries;
+             // TODO(h4x3rotab): Add metrics counter like Zcash? `ehSolverRuns.increment();`
+             if (found) {
+                 break;
+             }
+         }
     }
+
     if (max_tries == 0 || ShutdownRequested()) {
         return false;
     }
     if ((uint32_t)block.nNonce.GetUint64(0) == std::numeric_limits<uint32_t>::max()) {
         return true;
-    }
+    }//danny need double check?
 
     std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
     if (!chainman.ProcessNewBlock(chainparams, shared_pblock, true, nullptr)) {
@@ -142,12 +197,8 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
 static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& mempool, const CScript& coinbase_script, int nGenerate, uint64_t nMaxTries)
 {
-    static const int nInnerLoopBitcoinCount = 0x10000;
-    static const int nInnerLoopEquihashMask = 0xFFFF;
-    static const int nInnerLoopEquihashCount = 0xFFFF;
     int nHeightEnd = 0;
     int nHeight = 0;
-    int nInnerLoopCount;
 
     {   // Don't keep cs_main locked
         LOCK(cs_main);
@@ -156,9 +207,6 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
     }
     unsigned int nExtraNonce = 0;
     UniValue blockHashes(UniValue::VARR);
-    const CChainParams& params = Params();
-    unsigned int n;
-    unsigned int k;
     while (nHeight < nHeightEnd && !ShutdownRequested())
     {
         std::unique_ptr<CBlockTemplate> pblocktemplate(BlockAssembler(mempool, Params()).CreateNewBlock(coinbase_script));
@@ -175,59 +223,6 @@ static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& me
             ++nHeight;
             blockHashes.push_back(block_hash.GetHex());
         }
-		
-        if (pblock->nHeight < (uint32_t)params.GetConsensus().BTGHeight) {
-            // Solve sha256d.
-            nInnerLoopCount = nInnerLoopBitcoinCount;
-            while (nMaxTries > 0 && (int)pblock->nNonce.GetUint64(0) < nInnerLoopCount &&
-                   !CheckProofOfWork(pblock->GetHash(), pblock->nBits, false, Params().GetConsensus())) {
-                pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
-                --nMaxTries;
-            }
-        } else {
-            // Solve Equihash.
-            nInnerLoopCount = nInnerLoopEquihashCount;
-            n = params.EquihashN(pblock->nHeight);
-            k = params.EquihashK(pblock->nHeight);
-            blake2b_state eh_state;
-            EhInitialiseState(n, k, eh_state, params.EquihashUseBTGSalt(pblock->nHeight));
-
-            // I = the block header minus nonce and solution.
-            CEquihashInput I{*pblock};
-            CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
-            ss << I;
-
-            // H(I||...
-            blake2b_update(&eh_state, (unsigned char*)&ss[0], ss.size());
-
-            while (nMaxTries > 0 &&
-                   ((int)pblock->nNonce.GetUint64(0) & nInnerLoopEquihashMask) < nInnerLoopCount) {
-                // Yes, there is a chance every nonce could fail to satisfy the -regtest
-                // target -- 1 in 2^(2^256). That ain't gonna happen
-                pblock->nNonce = ArithToUint256(UintToArith256(pblock->nNonce) + 1);
-
-                // H(I||V||...
-                blake2b_state curr_state;
-                curr_state = eh_state;
-                blake2b_update(&curr_state, pblock->nNonce.begin(), pblock->nNonce.size());
-
-                // (x_1, x_2, ...) = A(I, V, n, k)
-                std::function<bool(std::vector<unsigned char>)> validBlock =
-                        [&pblock](std::vector<unsigned char> soln) {
-                    pblock->nSolution = soln;
-                    // TODO(h4x3rotab): Add metrics counter like Zcash? `solutionTargetChecks.increment();`
-                    // TODO(h4x3rotab): Maybe switch to EhBasicSolve and better deal with `nMaxTries`?
-                    return CheckProofOfWork(pblock->GetHash(), pblock->nBits, true, Params().GetConsensus());
-                };
-                bool found = EhBasicSolveUncancellable(n, k, curr_state, validBlock);
-                --nMaxTries;
-                // TODO(h4x3rotab): Add metrics counter like Zcash? `ehSolverRuns.increment();`
-                if (found) {
-                    break;
-                }
-            }
-        }
-
     }
     return blockHashes;
 }
