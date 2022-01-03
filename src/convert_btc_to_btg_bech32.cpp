@@ -211,7 +211,7 @@ int main(int argc, char* argv[]) {
 	}
 	else
 	{
-            std::string btg_addr = bech32::Encode(bech32::Encoding::BECH32, argv[2], ret.data);
+            std::string btg_addr = bech32::Encode(ret.encoding, argv[2], ret.data);
             std::cout << "btg addr: " << btg_addr << std::endl;
 	}
 }
