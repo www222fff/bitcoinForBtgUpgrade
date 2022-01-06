@@ -1347,7 +1347,7 @@ class msg_generic:
 class msg_no_witness_block(msg_block):
     __slots__ = ()
     def serialize(self):
-        return self.block.serialize(with_witness=False)
+        return self.block.serialize(with_witness=False, legacy=False)
 
 
 class msg_getaddr:

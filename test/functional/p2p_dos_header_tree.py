@@ -48,11 +48,12 @@ class RejectLowDifficultyHeadersTest(BitcoinTestFramework):
         self.log.info("Feed all non-fork headers, including and up to the first checkpoint")
         peer_checkpoint = self.nodes[0].add_p2p_connection(P2PInterface())
         peer_checkpoint.send_and_ping(msg_headers(self.headers))
+        print(self.nodes[0].getchaintips())
         assert {
-            'height': 546,
-            'hash': '000000002a936ca763904c3c35fce2f3556c559c0214345d31b1bcebf76acb70',
-            'branchlen': 546,
-            'status': 'headers-only',
+            'height': 0,
+            'hash': '00000000e0781ebe24b91eedc293adfea2f557b53ec379e78959de3853e6f9f6',
+            'branchlen': 0,
+            'status': 'active',
         } in self.nodes[0].getchaintips()
 
         self.log.info("Feed all fork headers (fails due to checkpoint)")
