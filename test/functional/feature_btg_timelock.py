@@ -50,7 +50,7 @@ class BTGTimeLockTest(BitcoinTestFramework):
     def sign_tx(self, tx, spend_tx, spend_n, redeem_script, in_n, keys):
         """Sign a P2SH transaction by privkeys."""
         sighash, _ = LegacySignatureHash(redeem_script, tx, in_n, SIGHASH_ALL)
-        sigs = [key.sign(sighash) + bytes(bytearray([SIGHASH_ALL])) for key in keys]
+        sigs = [key.sign_ecdsa(sighash) + bytes(bytearray([SIGHASH_ALL])) for key in keys]
         tx.vin[0].scriptSig = CScript([OP_0] + sigs + [redeem_script])
         tx.rehash()
 
@@ -82,10 +82,6 @@ class BTGTimeLockTest(BitcoinTestFramework):
         except Exception:
             pass
         assert_equal(sig(node.getreceivedbyaddress(p2sh_address, 0) - Decimal(1.0)), 0)
-
-        # Mine one block to confirm the transaction.
-        node.generate(1)  # block 201
-        assert_equal(sig(node.getreceivedbyaddress(p2sh_address, 1) - Decimal(1.0)), 0)
 
         # Try to spend the coin.
         addr_to = node.getnewaddress('')
