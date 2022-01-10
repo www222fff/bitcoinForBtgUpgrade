@@ -1029,7 +1029,7 @@ class SegWitTest(BitcoinTestFramework):
         block_2.vtx[0].vout.pop()
         block_2.vtx[0].wit = CTxWitness()
 
-        assert_equal('bad-txnmrklroot', self.nodes[0].submitblock(block_2.serialize().hex(), '', True))
+        assert_equal('bad-txnmrklroot', self.nodes[0].submitblock(block_2.serialize().hex(), True, ''))
         # Tip should not advance!
         assert self.nodes[0].getbestblockhash() != block_2.hash
 
