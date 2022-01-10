@@ -111,8 +111,6 @@ static RPCHelpMan getnetworkhashps()
 
 static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& max_tries, unsigned int& extra_nonce, uint256& block_hash)
 {
-    static const int nInnerLoopBitcoinMask = 0x1FFFF;
-    static const int nInnerLoopBitcoinCount = 0x10000;
     static const int nInnerLoopEquihashMask = 0xFFFF;
     static const int nInnerLoopEquihashCount = 0xFFFF;
     int nInnerLoopCount;
@@ -131,11 +129,13 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
 
     if (block.nHeight < (uint32_t)params.GetConsensus().BTGHeight) {
         // Solve sha256d.
-        nInnerLoopCount = nInnerLoopBitcoinCount;
-        while (max_tries > 0 && (((int)block.nNonce.GetUint64(0) & nInnerLoopBitcoinMask) < nInnerLoopCount) &&
-               !CheckProofOfWork(block.GetHash(), block.nBits, false, Params().GetConsensus())) {
+        while (max_tries > 0 && (uint32_t)block.nNonce.GetUint64(0) < std::numeric_limits<uint32_t>::max() &&
+               !CheckProofOfWork(block.GetHash(), block.nBits, false, Params().GetConsensus()) && !ShutdownRequested()) {
             block.nNonce = ArithToUint256(UintToArith256(block.nNonce) + 1);
             --max_tries;
+        }
+        if ((uint32_t)block.nNonce.GetUint64(0) == std::numeric_limits<uint32_t>::max()) {
+            return true;
         }
     } else {
         // Solve Equihash.
@@ -182,9 +182,6 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     if (max_tries == 0 || ShutdownRequested()) {
         return false;
     }
-    if ((uint32_t)block.nNonce.GetUint64(0) == std::numeric_limits<uint32_t>::max()) {
-        return true;
-    }//danny need double check?
 
     std::shared_ptr<const CBlock> shared_pblock = std::make_shared<const CBlock>(block);
     if (!chainman.ProcessNewBlock(chainparams, shared_pblock, true, nullptr)) {
@@ -998,8 +995,8 @@ static RPCHelpMan submitblock()
                 "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n",
                 {
                     {"hexdata", RPCArg::Type::STR_HEX, RPCArg::Optional::NO, "the hex-encoded block data to submit"},
+		    {"legacy", RPCArg::Type::BOOL, /* default */ "false", "indicates if the block is in legacy foramt."},
                     {"dummy", RPCArg::Type::STR, /* default */ "ignored", "dummy value, for compatibility with BIP22. This value is ignored."},
-		    {"legacy", RPCArg::Type::STR, /* default */ "false", "dummy value, indicates if the block is in legacy foramt."}
                 },
                 RPCResult{RPCResult::Type::NONE, "", "Returns JSON Null when valid, a string according to BIP22 otherwise"},
                 RPCExamples{
@@ -1011,7 +1008,7 @@ static RPCHelpMan submitblock()
     std::shared_ptr<CBlock> blockptr = std::make_shared<CBlock>();
     CBlock& block = *blockptr;
     bool legacy_format = false;
-    if (request.params.size() == 3 && request.params[2].get_bool() == true) {
+    if (request.params.size() == 3 && request.params[1].get_bool() == true) {
         legacy_format = true;
     }
     if (!DecodeHexBlk(block, request.params[0].get_str(), legacy_format)) {
@@ -1332,7 +1329,7 @@ static const CRPCCommand commands[] =
     { "mining",             "getmininginfo",          &getmininginfo,          {} },
     { "mining",             "prioritisetransaction",  &prioritisetransaction,  {"txid","dummy","fee_delta"} },
     { "mining",             "getblocktemplate",       &getblocktemplate,       {"template_request"} },
-    { "mining",             "submitblock",            &submitblock,            {"hexdata","dummy","legacy"} },
+    { "mining",             "submitblock",            &submitblock,            {"hexdata","legacy","dummy"} },
     { "mining",             "submitheader",           &submitheader,           {"hexdata"} },
     { "mining",             "getblocksubsidy",        &getblocksubsidy,        {"height"} },
 
