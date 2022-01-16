@@ -2611,14 +2611,9 @@ bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nC
     // CreateTransaction call and LockCoin calls (when lockUnspents is true).
     LOCK(cs_wallet);
 
-    bool no_forkid;
-    {
-        LOCK(cs_main);
-        no_forkid = !IsBTGHardForkEnabledForCurrentBlock(Params().GetConsensus());
-    }
     CTransactionRef tx_new;
     FeeCalculation fee_calc_out;
-    if (!CreateTransaction(vecSend, tx_new, nFeeRet, nChangePosInOut, error, coinControl, fee_calc_out, false, no_forkid)) {
+    if (!CreateTransaction(vecSend, tx_new, nFeeRet, nChangePosInOut, error, coinControl, fee_calc_out, false)) {
         return false;
     }
 
@@ -3116,8 +3111,7 @@ bool CWallet::CreateTransaction(
         bilingual_str& error,
         const CCoinControl& coin_control,
         FeeCalculation& fee_calc_out,
-        bool sign,
-	bool no_forkid)
+        bool sign)
 {
     int nChangePosIn = nChangePosInOut;
     CTransactionRef tx2 = tx;
