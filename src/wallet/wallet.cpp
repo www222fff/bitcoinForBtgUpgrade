@@ -2510,7 +2510,8 @@ bool CWallet::SignTransaction(CMutableTransaction& tx, bool no_forkid) const
         coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase());
     }
     std::map<int, std::string> input_errors;
-    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors, no_forkid);
+    int sighash_flag = no_forkid ? SIGHASH_ALL : SIGHASH_ALL | SIGHASH_FORKID;
+    return SignTransaction(tx, coins, sighash_flag, input_errors, no_forkid);
 }
 
 bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors, bool no_forkid) const
